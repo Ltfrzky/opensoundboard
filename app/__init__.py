@@ -1,0 +1,1 @@
+"""OpenSoundboard application package."""
