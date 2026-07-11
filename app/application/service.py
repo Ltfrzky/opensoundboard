@@ -68,6 +68,22 @@ class SoundboardService:
             volume,
             loop_enabled,
             existing.sort_order,
+            existing.hotkey,
+        )
+        return self.sounds.save_sound(updated)
+
+    def set_sound_hotkey(self, sound_id: int, hotkey: str | None) -> Sound:
+        existing = self.get_sound(sound_id)
+        updated = Sound(
+            existing.id,
+            existing.board_id,
+            existing.name,
+            existing.file_path,
+            existing.source_path,
+            existing.volume,
+            existing.loop_enabled,
+            existing.sort_order,
+            hotkey,
         )
         return self.sounds.save_sound(updated)
 

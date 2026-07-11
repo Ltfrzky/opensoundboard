@@ -11,13 +11,13 @@ from app.application.service import SoundboardService
 from app.infrastructure.audio import QtAudioEngine
 from app.infrastructure.database import SQLiteStore
 from app.infrastructure.file_library import FileLibrary
-from app.infrastructure.hotkeys.disabled import DisabledHotkeyService
+from app.infrastructure.hotkeys.pynput_service import PynputHotkeyService
 
 
 @dataclass(frozen=True, slots=True)
 class AppContext:
     service: SoundboardService
-    hotkeys: DisabledHotkeyService
+    hotkeys: PynputHotkeyService
 
 
 def create_context(data_path: Path | None = None) -> AppContext:
@@ -29,7 +29,7 @@ def create_context(data_path: Path | None = None) -> AppContext:
         _configure_logging(root)
     store = SQLiteStore(root / "opensoundboard.sqlite3")
     service = SoundboardService(store, store, store, FileLibrary(root / "library"), QtAudioEngine())
-    return AppContext(service, DisabledHotkeyService())
+    return AppContext(service, PynputHotkeyService())
 
 
 def _configure_logging(root: Path) -> None:

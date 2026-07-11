@@ -32,10 +32,19 @@ class SQLiteStore:
                     id INTEGER PRIMARY KEY, board_id INTEGER NOT NULL REFERENCES boards(id),
                     name TEXT NOT NULL, file_path TEXT NOT NULL, source_path TEXT,
                     volume INTEGER NOT NULL DEFAULT 100, loop_enabled INTEGER NOT NULL DEFAULT 0,
-                    sort_order INTEGER NOT NULL DEFAULT 0
+                    sort_order INTEGER NOT NULL DEFAULT 0, hotkey TEXT
                 );
                 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
                 """
+            )
+            columns = {
+                row[1] for row in connection.execute("PRAGMA table_info(sounds)").fetchall()
+            }
+            if "hotkey" not in columns:
+                connection.execute("ALTER TABLE sounds ADD COLUMN hotkey TEXT")
+            connection.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_sounds_hotkey "
+                "ON sounds(hotkey) WHERE hotkey IS NOT NULL"
             )
             if connection.execute("SELECT COUNT(*) FROM boards").fetchone()[0] == 0:
                 connection.execute(
@@ -93,9 +102,32 @@ class SQLiteStore:
     def save_sound(self, sound: Sound) -> Sound:
         with self._connect() as connection:
             if sound.id:
-                connection.execute(
-                    "UPDATE sounds SET board_id=?, name=?, file_path=?, source_path=?, "
-                    "volume=?, loop_enabled=? WHERE id=?",
+                try:
+                    connection.execute(
+                        "UPDATE sounds SET board_id=?, name=?, file_path=?, source_path=?, "
+                        "volume=?, loop_enabled=?, hotkey=? WHERE id=?",
+                        (
+                            sound.board_id,
+                            sound.name,
+                            str(sound.file_path),
+                            self._source_value(sound),
+                            sound.volume,
+                            int(sound.loop_enabled),
+                            sound.hotkey,
+                            sound.id,
+                        ),
+                    )
+                except sqlite3.IntegrityError as error:
+                    raise ValueError("Sound hotkey must be unique") from error
+                return sound
+            order = connection.execute(
+                "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM sounds WHERE board_id = ?",
+                (sound.board_id,),
+            ).fetchone()[0]
+            try:
+                cursor = connection.execute(
+                    "INSERT INTO sounds(board_id, name, file_path, source_path, volume, "
+                    "loop_enabled, sort_order, hotkey) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         sound.board_id,
                         sound.name,
@@ -103,27 +135,12 @@ class SQLiteStore:
                         self._source_value(sound),
                         sound.volume,
                         int(sound.loop_enabled),
-                        sound.id,
+                        order,
+                        sound.hotkey,
                     ),
                 )
-                return sound
-            order = connection.execute(
-                "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM sounds WHERE board_id = ?",
-                (sound.board_id,),
-            ).fetchone()[0]
-            cursor = connection.execute(
-                "INSERT INTO sounds(board_id, name, file_path, source_path, volume, "
-                "loop_enabled, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (
-                    sound.board_id,
-                    sound.name,
-                    str(sound.file_path),
-                    self._source_value(sound),
-                    sound.volume,
-                    int(sound.loop_enabled),
-                    order,
-                ),
-            )
+            except sqlite3.IntegrityError as error:
+                raise ValueError("Sound hotkey must be unique") from error
         return Sound(
             cursor.lastrowid,
             sound.board_id,
@@ -133,6 +150,7 @@ class SQLiteStore:
             sound.volume,
             sound.loop_enabled,
             order,
+            sound.hotkey,
         )
 
     def delete_sound(self, sound_id: int) -> None:
@@ -177,4 +195,5 @@ class SQLiteStore:
             row["volume"],
             bool(row["loop_enabled"]),
             row["sort_order"],
+            row["hotkey"],
         )

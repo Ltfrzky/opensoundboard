@@ -8,12 +8,14 @@ described in the project documentation.
 
 ```powershell
 python -m venv .venv
-.venv\Scripts\python -m pip install -e ".[dev]"
+.venv\Scripts\python -m pip install -e ".[dev,hotkeys]"
 .venv\Scripts\python -m app.main
 .venv\Scripts\python -m pytest
 .venv\Scripts\ruff check .
 ```
 
-The prototype supports local board and sound persistence, safe file imports, and
-local playback. Global hotkeys, backups, packaging, output-device selection, and
-advanced organization tools are intentionally deferred.
+The prototype supports local board and sound persistence, safe file imports, local
+playback, and configurable global hotkeys. Install only `.[dev]` to run GUI playback
+without global hooks; install `.[dev,hotkeys]` to enable the optional `pynput` backend.
+Backups, packaging, output-device selection, and advanced organization tools remain
+deferred.

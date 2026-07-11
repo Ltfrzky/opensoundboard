@@ -2,12 +2,18 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
 
-from app.domain.models import Board, Sound
+from app.domain.models import Board, HotkeyBinding, Sound
 
 
 @dataclass(frozen=True, slots=True)
 class HotkeyCapability:
     available: bool
+    message: str
+
+
+@dataclass(frozen=True, slots=True)
+class HotkeyRegistrationResult:
+    success: bool
     message: str
 
 
@@ -39,5 +45,8 @@ class SettingsRepository(Protocol):
 
 class HotkeyService(Protocol):
     def capability(self) -> HotkeyCapability: ...
-    def register(self, hotkey: str, callback: Callable[[], None]) -> bool: ...
-    def unregister(self, hotkey: str) -> None: ...
+    def register(
+        self, binding: HotkeyBinding, callback: Callable[[], None]
+    ) -> HotkeyRegistrationResult: ...
+    def unregister(self, binding: HotkeyBinding) -> None: ...
+    def unregister_all(self) -> None: ...

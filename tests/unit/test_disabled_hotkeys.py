@@ -17,4 +17,4 @@ def test_disabled_hotkeys_reject_registration_without_side_effects() -> None:
 
     registered = service.register("Ctrl+1", lambda: None)
 
-    assert registered is False
+    assert registered.success is False

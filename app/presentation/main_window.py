@@ -22,8 +22,13 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from app.application.hotkeys import HotkeyCoordinator
 from app.application.service import SoundboardService
+from app.domain.errors import HotkeyConflictError, HotkeyRegistrationError
 from app.domain.interfaces import HotkeyService
+from app.presentation.hotkey_bridge import HotkeyBridge
+from app.presentation.hotkey_dialog import HotkeyCaptureDialog
+from app.presentation.hotkey_settings import HotkeySettingsDialog
 from app.presentation.viewmodel import SoundboardViewModel
 
 
@@ -33,6 +38,15 @@ class MainWindow(QMainWindow):
         self.service = service
         self.viewmodel = SoundboardViewModel(service)
         self.hotkeys = hotkeys
+        self.bridge = HotkeyBridge()
+        self.coordinator = HotkeyCoordinator(
+            service,
+            hotkeys,
+            sound_trigger=self.bridge.emit_sound,
+            panic_trigger=self.bridge.emit_panic_stop,
+        )
+        self.bridge.sound_triggered.connect(self.service.play)
+        self.bridge.panic_stop_requested.connect(self.service.stop_all)
         self.board_list = QListWidget()
         self.board_list.currentRowChanged.connect(self.refresh_sounds)
         self._grid = QGridLayout()
@@ -41,6 +55,7 @@ class MainWindow(QMainWindow):
         self.setAcceptDrops(True)
         self._build_ui()
         self.refresh_boards()
+        self.coordinator.load_and_register_all()
 
     def _build_ui(self) -> None:
         toolbar = QToolBar("Controls")
@@ -61,6 +76,9 @@ class MainWindow(QMainWindow):
         stop_all = QPushButton("Stop All")
         stop_all.clicked.connect(self.service.stop_all)
         toolbar.addWidget(stop_all)
+        hotkey_settings = QPushButton("Hotkeys")
+        hotkey_settings.clicked.connect(self.open_hotkey_settings)
+        toolbar.addWidget(hotkey_settings)
 
         central = QWidget()
         layout = QHBoxLayout(central)
@@ -111,6 +129,7 @@ class MainWindow(QMainWindow):
         card = QWidget()
         layout = QVBoxLayout(card)
         layout.addWidget(QLabel(f"<b>{sound.name}</b>"))
+        layout.addWidget(QLabel(f"Hotkey: {sound.hotkey or 'Not assigned'}"))
         state = "Missing file" if sound.is_missing else sound.file_path.suffix.upper().lstrip(".")
         layout.addWidget(QLabel(state))
         controls = QHBoxLayout()
@@ -137,6 +156,13 @@ class MainWindow(QMainWindow):
         delete = QPushButton("Delete")
         delete.clicked.connect(lambda: self.delete_sound(sound.id))
         layout.addWidget(delete)
+        hotkey = QPushButton("Set hotkey")
+        hotkey.clicked.connect(lambda: self.assign_hotkey(sound.id))
+        layout.addWidget(hotkey)
+        if sound.hotkey:
+            clear_hotkey = QPushButton("Clear hotkey")
+            clear_hotkey.clicked.connect(lambda: self.clear_hotkey(sound.id))
+            layout.addWidget(clear_hotkey)
         return card
 
     def create_board(self) -> None:
@@ -255,6 +281,36 @@ class MainWindow(QMainWindow):
             logging.getLogger("opensoundboard").exception("Playback failed")
             QMessageBox.warning(self, "Playback failed", "This sound could not be played.")
 
+    def assign_hotkey(self, sound_id: int) -> None:
+        binding = HotkeyCaptureDialog.capture(self)
+        if binding is None:
+            return
+        try:
+            self.coordinator.assign_sound(sound_id, binding)
+        except HotkeyConflictError as error:
+            if (
+                QMessageBox.question(self, "Replace hotkey?", f"{error}. Replace it?")
+                != QMessageBox.StandardButton.Yes
+            ):
+                return
+            try:
+                self.coordinator.assign_sound(sound_id, binding, replace_existing=True)
+            except HotkeyRegistrationError as registration_error:
+                QMessageBox.warning(self, "Hotkey registration failed", str(registration_error))
+                return
+        except HotkeyRegistrationError as error:
+            QMessageBox.warning(self, "Hotkey registration failed", str(error))
+            return
+        self.refresh_sounds(self.board_list.currentRow())
+
+    def clear_hotkey(self, sound_id: int) -> None:
+        self.coordinator.clear_sound(sound_id)
+        self.refresh_sounds(self.board_list.currentRow())
+
+    def open_hotkey_settings(self) -> None:
+        HotkeySettingsDialog(self.coordinator, self).exec()
+        self.refresh_sounds(self.board_list.currentRow())
+
     def _set_master_volume(self, value: int) -> None:
         setter = getattr(self.service.audio_engine, "set_master_volume", None)
         if setter:
@@ -270,3 +326,7 @@ class MainWindow(QMainWindow):
             board = self.service.list_boards()[self.board_list.currentRow()]
             self.service.import_files(board.id, paths, copy_files=True)
             self.refresh_sounds(self.board_list.currentRow())
+
+    def closeEvent(self, event) -> None:  # type: ignore[override]
+        self.coordinator.shutdown()
+        super().closeEvent(event)

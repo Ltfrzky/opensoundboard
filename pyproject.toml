@@ -18,6 +18,9 @@ dev = [
   "pytest>=8.0",
   "ruff>=0.8",
 ]
+hotkeys = [
+  "pynput>=1.7",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

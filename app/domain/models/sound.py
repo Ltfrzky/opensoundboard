@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from app.domain.errors import InvalidSoundError
+from app.domain.models.hotkey import HotkeyBinding
 
 
 @dataclass(frozen=True, slots=True)
@@ -14,6 +15,7 @@ class Sound:
     volume: int = 100
     loop_enabled: bool = False
     sort_order: int = 0
+    hotkey: str | None = None
 
     def __post_init__(self) -> None:
         name = self.name.strip()
@@ -25,6 +27,8 @@ class Sound:
         object.__setattr__(self, "file_path", Path(self.file_path))
         if self.source_path is not None:
             object.__setattr__(self, "source_path", Path(self.source_path))
+        if self.hotkey is not None:
+            object.__setattr__(self, "hotkey", HotkeyBinding.parse(self.hotkey).canonical)
 
     @property
     def is_missing(self) -> bool:
