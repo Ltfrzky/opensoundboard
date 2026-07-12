@@ -17,6 +17,8 @@ class FileLibrary:
 
     def validate(self, path: Path) -> Path:
         candidate = Path(path)
+        if candidate.is_symlink():
+            raise InvalidSoundError(f"{candidate.name}: symbolic links are not supported")
         if candidate.suffix.lower() not in SUPPORTED_AUDIO_EXTENSIONS:
             raise InvalidSoundError(f"{candidate.name}: unsupported audio format")
         if not candidate.is_file():
