@@ -152,12 +152,13 @@ class OperatorStrip(QFrame):
     def _build_import_button(self) -> QToolButton:
         button = QToolButton()
         button.setObjectName("importButton")
-        button.setText("Import")
+        button.setText("Import audio")
         button.setIcon(material_icon("file_upload"))
         button.setAccessibleName("Import audio")
         button.setToolTip("Import audio into the managed library")
+        button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         button.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
-        button.setMinimumSize(108, 40)
+        button.setMinimumSize(128, 40)
         button.clicked.connect(lambda _checked=False: self.import_requested.emit(True))
 
         menu = QMenu(button)

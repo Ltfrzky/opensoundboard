@@ -150,7 +150,7 @@ class MainWindow(QMainWindow):
         header_layout.addStretch()
         drop = QPushButton("Drop audio here")
         drop.setObjectName("linkButton")
-        drop.clicked.connect(lambda: self.import_files())
+        drop.clicked.connect(self._request_managed_import)
         header_layout.addWidget(drop)
         self.arrange_button = QPushButton("Arrange")
         self.arrange_button.setObjectName("arrangeButton")
@@ -500,6 +500,9 @@ class MainWindow(QMainWindow):
         result = self.service.import_files(board.id, [Path(path) for path in paths], copy_files)
         self._show_import_summary(result)
         self.refresh_sounds(self.board_list.currentRow())
+
+    def _request_managed_import(self) -> None:
+        self.import_files(True)
 
     def _show_import_summary(self, result: ImportResult) -> None:
         lines = [f"{len(result.imported)} imported"]

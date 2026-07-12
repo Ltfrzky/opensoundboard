@@ -350,6 +350,34 @@ def test_operator_strip_split_import_emits_managed_and_reference_choices(tmp_pat
     application.processEvents()
 
 
+def test_operator_strip_shows_a_labelled_import_control_at_normal_width(tmp_path: Path) -> None:
+    application = QApplication.instance() or QApplication([])
+    context = create_context(tmp_path)
+    window = MainWindow(context.service, context.hotkeys)
+    import_button = window.operator_strip.findChild(QToolButton, "importButton")
+
+    assert import_button is not None
+    assert import_button.text() == "Import audio"
+    assert import_button.toolButtonStyle() is Qt.ToolButtonStyle.ToolButtonTextBesideIcon
+
+    window.close()
+    application.processEvents()
+
+
+def test_header_import_requests_managed_copy(tmp_path: Path) -> None:
+    application = QApplication.instance() or QApplication([])
+    context = create_context(tmp_path)
+    window = MainWindow(context.service, context.hotkeys)
+    requests: list[bool | None] = []
+    window.import_files = requests.append
+
+    window._request_managed_import()
+
+    assert requests == [True]
+    window.close()
+    application.processEvents()
+
+
 def test_operator_strip_routes_volume_and_all_playback_modes(tmp_path: Path) -> None:
     application = QApplication.instance() or QApplication([])
     context = create_context(tmp_path)
