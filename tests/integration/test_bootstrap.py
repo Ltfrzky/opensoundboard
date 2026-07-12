@@ -177,6 +177,24 @@ def test_sound_pad_context_menu_keeps_sound_management_actions() -> None:
     application.processEvents()
 
 
+def test_sound_pad_exposes_a_visible_actions_menu() -> None:
+    application = QApplication.instance() or QApplication([])
+    sound = Sound(12, 1, "Stinger", Path("stinger.wav"), hotkey="Ctrl+2")
+
+    pad = SoundPad(sound, active=False, arrange_mode=False)
+    actions = pad.findChild(QToolButton, "padActions-12")
+
+    assert actions is not None
+    assert actions.minimumWidth() >= 40
+    assert actions.minimumHeight() >= 40
+    assert actions.accessibleName() == "Manage Stinger"
+    actions_text = [action.text() for action in actions.menu().actions()]
+    assert actions_text[:3] == ["Rename", "Change hotkey", "Clear hotkey"]
+    assert actions_text[3].startswith("Move to board")
+    pad.close()
+    application.processEvents()
+
+
 def test_cue_workspace_uses_four_column_pads_and_arrange_mode(tmp_path: Path) -> None:
     application = QApplication.instance() or QApplication([])
     context = create_context(tmp_path)
@@ -194,9 +212,11 @@ def test_cue_workspace_uses_four_column_pads_and_arrange_mode(tmp_path: Path) ->
     assert window._grid.columnCount() == 4
     assert window._grid.itemAtPosition(0, 3) is not None
     assert window._grid.itemAtPosition(1, 0) is not None
-    arrange = window.findChild(QPushButton, "arrangeButton")
-    assert arrange is not None
-    arrange.click()
+    manage = window.findChild(QPushButton, "manageButton")
+    assert manage is not None
+    assert manage.text() == "Manage sounds"
+    assert manage.toolTip() == "Show sound deletion controls"
+    manage.click()
     application.processEvents()
 
     pad = window._grid.itemAtPosition(0, 0).widget()
@@ -204,6 +224,8 @@ def test_cue_workspace_uses_four_column_pads_and_arrange_mode(tmp_path: Path) ->
     trigger = pad.findChild(QToolButton, f"padTrigger-{sounds[0].id}")
     assert delete is not None and not delete.isHidden()
     assert trigger is not None and not trigger.isEnabled()
+    assert manage.text() == "Done"
+    assert manage.toolTip() == "Hide sound deletion controls"
     window.close()
     application.processEvents()
 

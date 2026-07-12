@@ -43,14 +43,19 @@ QPushButton:pressed { background: #101923; border-color: #5d788a; }
 QPushButton:focus, QComboBox:focus, QSlider:focus { border-color: #38d8ff; }
 QPushButton#primaryButton, QPushButton#playButton { background: #38d8ff; color: #061117; border-color: #38d8ff; }
 QPushButton#dangerButton { background: #3a1e24; color: #ffdfe2; border-color: #6d2c35; }
-QPushButton#arrangeButton { min-width: 84px; color: #b7c4ce; background: #101820; }
-QPushButton#arrangeButton[arranging="true"] {
+QPushButton#manageButton { min-width: 112px; color: #b7c4ce; background: #101820; }
+QPushButton#manageButton[managing="true"] {
     color: #38d8ff; background: #0d2731; border-color: #2498b5;
 }
 QPushButton[cssRole="padDelete"] {
     min-width: 78px; background: #3a1e24; color: #ffdfe2; border-color: #6d2c35;
 }
 QPushButton[cssRole="padDelete"]:hover { background: #491920; border-color: #ff626b; }
+QToolButton[cssRole="padActions"] {
+    background: #101820; border: 1px solid #2a3b4a; border-radius: 6px; padding: 6px;
+}
+QToolButton[cssRole="padActions"]:hover { background: #1b2a37; border-color: #486476; }
+QToolButton[cssRole="padActions"]:focus { border-color: #38d8ff; }
 QPushButton[cssRole="padRecover"] {
     color: #f4b84a; background: transparent; border-color: #6a502c;
 }

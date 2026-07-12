@@ -64,7 +64,7 @@ class MainWindow(QMainWindow):
             self._grid.setColumnStretch(column, 1)
         self._active_lanes: list[PlaybackSnapshot] = []
         self._active_sound_ids: set[int] = set()
-        self._arrange_mode = False
+        self._manage_mode = False
         self.setWindowTitle("OpenSoundboard")
         self.resize(1280, 760)
         self.setMinimumSize(1000, 620)
@@ -152,13 +152,14 @@ class MainWindow(QMainWindow):
         drop.setObjectName("linkButton")
         drop.clicked.connect(self._request_managed_import)
         header_layout.addWidget(drop)
-        self.arrange_button = QPushButton("Arrange")
-        self.arrange_button.setObjectName("arrangeButton")
-        self.arrange_button.setCheckable(True)
-        self.arrange_button.setIcon(material_icon("layers"))
-        self.arrange_button.setMinimumHeight(40)
-        self.arrange_button.clicked.connect(self.toggle_arrange)
-        header_layout.addWidget(self.arrange_button)
+        self.manage_button = QPushButton("Manage sounds")
+        self.manage_button.setObjectName("manageButton")
+        self.manage_button.setCheckable(True)
+        self.manage_button.setIcon(material_icon("edit"))
+        self.manage_button.setMinimumHeight(40)
+        self.manage_button.setToolTip("Show sound deletion controls")
+        self.manage_button.clicked.connect(self.toggle_manage)
+        header_layout.addWidget(self.manage_button)
         board_settings = QPushButton("Edit board")
         board_settings.setObjectName("boardSettingsButton")
         board_settings.setToolTip("Board settings")
@@ -291,7 +292,7 @@ class MainWindow(QMainWindow):
         pad = SoundPad(
             sound,
             active=sound.id in self._active_sound_ids,
-            arrange_mode=self._arrange_mode,
+            arrange_mode=self._manage_mode,
         )
         pad.play_requested.connect(self._toggle_sound)
         pad.recover_requested.connect(self.recover_sound)
@@ -378,15 +379,15 @@ class MainWindow(QMainWindow):
             row_layout.addWidget(stop)
             self.lane_layout.addWidget(row)
 
-    def toggle_arrange(self) -> None:
-        self._arrange_mode = self.arrange_button.isChecked()
-        self.arrange_button.setText("Done" if self._arrange_mode else "Arrange")
-        self.arrange_button.setProperty("arranging", self._arrange_mode)
-        self.arrange_button.setToolTip(
-            "Finish arranging pads" if self._arrange_mode else "Show pad delete controls"
+    def toggle_manage(self) -> None:
+        self._manage_mode = self.manage_button.isChecked()
+        self.manage_button.setText("Done" if self._manage_mode else "Manage sounds")
+        self.manage_button.setProperty("managing", self._manage_mode)
+        self.manage_button.setToolTip(
+            "Hide sound deletion controls" if self._manage_mode else "Show sound deletion controls"
         )
-        self.arrange_button.style().unpolish(self.arrange_button)
-        self.arrange_button.style().polish(self.arrange_button)
+        self.manage_button.style().unpolish(self.manage_button)
+        self.manage_button.style().polish(self.manage_button)
         self.refresh_sounds(self.board_list.currentRow())
 
     def create_board(self) -> None:
