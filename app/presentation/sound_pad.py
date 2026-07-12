@@ -127,20 +127,30 @@ class SoundPad(QFrame):
             self.volume_slider.setRange(0, 100)
             self.volume_slider.setValue(sound.volume)
             self.volume_slider.setAccessibleName(f"Volume for {sound.name}")
+            self.volume_value = QLabel(f"{sound.volume}%")
+            self.volume_value.setObjectName(f"padVolumeValue-{sound.id}")
+            self.volume_value.setProperty("cssRole", "padVolumeValue")
+            self.volume_value.setAlignment(
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+            )
+            self.volume_value.setFixedWidth(34)
+            self.volume_slider.valueChanged.connect(
+                lambda value: self.volume_value.setText(f"{value}%")
+            )
             self.volume_slider.sliderReleased.connect(
                 lambda: self.volume_changed.emit(sound.id, self.volume_slider.value())
             )
             mix.addWidget(self.volume_slider, 1)
+            mix.addWidget(self.volume_value)
             self.loop_button = QPushButton("Loop")
             self.loop_button.setObjectName(f"padLoop-{sound.id}")
             self.loop_button.setProperty("cssRole", "padLoop")
             self.loop_button.setCheckable(True)
             self.loop_button.setChecked(sound.loop_enabled)
-            self.loop_button.setMinimumSize(58, 40)
+            self.loop_button.setText("Loop on" if sound.loop_enabled else "Loop")
+            self.loop_button.setMinimumSize(68, 40)
             self.loop_button.setAccessibleName(f"Loop {sound.name}")
-            self.loop_button.toggled.connect(
-                lambda enabled: self.loop_changed.emit(sound.id, enabled)
-            )
+            self.loop_button.toggled.connect(lambda enabled: self._set_loop_enabled(enabled))
             mix.addWidget(self.loop_button)
             layout.addLayout(mix)
 
@@ -168,6 +178,10 @@ class SoundPad(QFrame):
         move = menu.addAction("Move to board…")
         move.triggered.connect(lambda: self.move_requested.emit(self.sound.id))
         return menu
+
+    def _set_loop_enabled(self, enabled: bool) -> None:
+        self.loop_button.setText("Loop on" if enabled else "Loop")
+        self.loop_changed.emit(self.sound.id, enabled)
 
     def _show_context_menu(self, position: QPoint) -> None:
         self.context_menu().exec(self.mapToGlobal(position))

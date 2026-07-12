@@ -156,17 +156,40 @@ def test_sound_pad_uses_full_width_trigger_loop_button_and_clickable_hotkey(
     pad = SoundPad(sound, active=False, arrange_mode=False)
     trigger = pad.findChild(QToolButton, "padTrigger-10")
     loop = pad.findChild(QPushButton, "padLoop-10")
+    volume = pad.findChild(QLabel, "padVolumeValue-10")
     hotkey = pad.findChild(QPushButton, "padHotkey-10")
     hotkey_spy = QSignalSpy(pad.hotkey_requested)
 
     assert trigger is not None
     assert trigger.sizePolicy().horizontalPolicy().name == "Expanding"
     assert loop is not None and loop.isCheckable()
+    assert loop.text() == "Loop"
+    loop.click()
+    assert loop.text() == "Loop on"
+    assert volume is not None and volume.text() == "100%"
+    slider = pad.findChild(QSlider, "padVolume-10")
+    assert slider is not None
+    slider.setValue(42)
+    assert volume.text() == "42%"
     assert hotkey is not None and hotkey.isEnabled()
     assert not pad.findChildren(QCheckBox)
     hotkey.click()
     assert hotkey_spy.count() == 1
     assert hotkey_spy.at(0) == [10]
+    pad.close()
+    application.processEvents()
+
+
+def test_sound_pad_labels_an_enabled_loop_without_relying_on_color(tmp_path: Path) -> None:
+    application = QApplication.instance() or QApplication([])
+    sound_path = tmp_path / "loop.wav"
+    sound_path.write_bytes(b"RIFF")
+    sound = Sound(11, 1, "Loop", sound_path, loop_enabled=True)
+
+    pad = SoundPad(sound, active=False, arrange_mode=False)
+    loop = pad.findChild(QPushButton, "padLoop-11")
+
+    assert loop is not None and loop.text() == "Loop on"
     pad.close()
     application.processEvents()
 
@@ -258,8 +281,6 @@ def test_signal_console_exposes_collapsed_activity_rail_and_capability_link(tmp_
     application = QApplication.instance() or QApplication([])
     context = create_context(tmp_path)
     window = MainWindow(context.service, context.hotkeys)
-    window.show()
-    application.processEvents()
 
     activity_rail = window.findChild(QWidget, "activityRail")
     activity_toggle = window.findChild(QPushButton, "activityToggleButton")
@@ -312,8 +333,6 @@ def test_active_playback_rail_renders_compact_lane_and_stops_it(tmp_path: Path) 
     source.write_bytes(b"RIFF")
     sound = context.service.sounds.save_sound(Sound(0, board.id, "Intro", source))
     window = MainWindow(context.service, context.hotkeys)
-    window.show()
-    application.processEvents()
     window._active_lanes = [PlaybackSnapshot("lane-1", sound.id, 4_000, 12_000)]
     window._refresh_lanes()
 
@@ -366,8 +385,6 @@ def test_activity_rail_can_be_pinned_while_idle_and_auto_expands_for_playback(
     source.write_bytes(b"RIFF")
     sound = context.service.sounds.save_sound(Sound(0, board.id, "Activity", source))
     window = MainWindow(context.service, context.hotkeys)
-    window.show()
-    application.processEvents()
     activity_rail = window.findChild(QWidget, "activityRail")
     activity_toggle = window.findChild(QPushButton, "activityToggleButton")
 
