@@ -11,8 +11,9 @@ OpenSoundboard is an offline-first PySide6 desktop soundboard prototype.
 - PySide6 board sidebar, sound grid, import dialog, drag-and-drop import, and status bar
 - Optional global hotkeys for sound cards and Panic Stop, with capture, conflict replacement,
   debounce, persisted assignments, and explicit capability/error states
+- Windows x64 unsigned portable-beta packaging, with a repeatable QA gate
 
 ## Deferred
 
-Backups, output-device selection, search, sorting, list view, reorder, packaging, themes, and
+Backups, output-device selection, search, sorting, list view, reorder, installers, signing, themes, and
 advanced settings are not implemented in this prototype.

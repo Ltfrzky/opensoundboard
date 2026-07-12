@@ -21,6 +21,9 @@ dev = [
 hotkeys = [
   "pynput>=1.7",
 ]
+package = [
+  "PyInstaller>=6.21,<7",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
