@@ -6,7 +6,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from app.domain.errors import BoardNotEmptyError
-from app.domain.models import Board, Sound
+from app.domain.models import Board, HotkeyBinding, Sound
 
 
 class SQLiteStore:
@@ -228,6 +228,7 @@ class SQLiteStore:
     @staticmethod
     def _to_sound(row: sqlite3.Row) -> Sound:
         source = row["source_path"]
+        binding = HotkeyBinding.parse_persisted(row["hotkey"])
         return Sound(
             row["id"],
             row["board_id"],
@@ -237,6 +238,6 @@ class SQLiteStore:
             row["volume"],
             bool(row["loop_enabled"]),
             row["sort_order"],
-            row["hotkey"],
+            binding.canonical if binding else None,
             row["duration_ms"],
         )

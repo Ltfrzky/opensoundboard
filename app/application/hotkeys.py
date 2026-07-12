@@ -97,7 +97,7 @@ class HotkeyCoordinator:
             if sound.hotkey is None:
                 continue
             error = self._register(
-                HotkeyBinding.parse(sound.hotkey),
+                HotkeyBinding.parse_persisted(sound.hotkey),
                 lambda sound_id=sound.id: self._trigger_sound(sound_id),
             )
             if error:
@@ -124,7 +124,7 @@ class HotkeyCoordinator:
         if self._panic_binding() is not None and self._panic_binding().canonical == canonical:
             raise HotkeyConflictError("This hotkey is assigned to Panic Stop")
 
-        old = HotkeyBinding.parse(sound.hotkey) if sound.hotkey else None
+        old = HotkeyBinding.parse_persisted(sound.hotkey)
         if self.is_enabled():
             if old is not None:
                 self.hotkeys.unregister(old)
@@ -154,8 +154,9 @@ class HotkeyCoordinator:
 
     def clear_sound(self, sound_id: int) -> None:
         sound = self.service.get_sound(sound_id)
-        if sound.hotkey and self.is_enabled():
-            self.hotkeys.unregister(HotkeyBinding.parse(sound.hotkey))
+        binding = HotkeyBinding.parse_persisted(sound.hotkey)
+        if binding is not None and self.is_enabled():
+            self.hotkeys.unregister(binding)
         self.service.set_sound_hotkey(sound_id, None)
 
     def assign_panic_stop(
@@ -241,4 +242,4 @@ class HotkeyCoordinator:
 
     def _panic_binding(self) -> HotkeyBinding | None:
         value = self.service.settings.get_setting("panic_stop_hotkey", "")
-        return HotkeyBinding.parse(value) if value else None
+        return HotkeyBinding.parse_persisted(value)

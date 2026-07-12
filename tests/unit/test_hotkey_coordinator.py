@@ -129,3 +129,21 @@ def test_panic_stop_and_debounce(context) -> None:
 
     assert audio.played == [sound.id]
     assert audio.stop_all_calls == 1
+
+
+def test_invalid_persisted_hotkeys_are_treated_as_unassigned_without_overwriting_storage(
+    context,
+) -> None:
+    service, _, sound, hotkeys, coordinator = context
+    store = service.sounds
+    with store._transaction() as connection:
+        connection.execute(
+            "UPDATE sounds SET hotkey = ? WHERE id = ?", ("not a shortcut", sound.id)
+        )
+    service.settings.set_setting("panic_stop_hotkey", "not a shortcut")
+    coordinator.set_enabled(True)
+
+    assert service.get_sound(sound.id).hotkey is None
+    assert coordinator.load_and_register_all() == []
+    assert hotkeys.callbacks == {}
+    assert service.settings.get_setting("panic_stop_hotkey", "") == "not a shortcut"

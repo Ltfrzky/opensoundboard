@@ -610,7 +610,8 @@ class MainWindow(QMainWindow):
         enabled = self.coordinator.is_enabled()
         self.operator_strip.set_hotkey_state(enabled)
         panic_value = self.service.settings.get_setting("panic_stop_hotkey", "")
-        panic_label = HotkeyBinding.parse(panic_value).display_label if panic_value else None
+        panic_binding = HotkeyBinding.parse_persisted(panic_value)
+        panic_label = panic_binding.display_label if panic_binding else None
         self.operator_strip.set_panic_shortcut(panic_label)
 
     def toggle_hotkeys(self) -> None:

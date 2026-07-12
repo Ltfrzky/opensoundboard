@@ -482,6 +482,18 @@ def test_header_import_requests_managed_copy(tmp_path: Path) -> None:
     application.processEvents()
 
 
+def test_settings_dialog_opens_when_persisted_panic_hotkey_is_invalid(tmp_path: Path) -> None:
+    application = QApplication.instance() or QApplication([])
+    context = create_context(tmp_path)
+    context.service.settings.set_setting("panic_stop_hotkey", "not a shortcut")
+
+    dialog = SettingsDialog(context.service, HotkeyCoordinator(context.service, context.hotkeys))
+
+    assert dialog.panic_label.text() == "Not assigned"
+    dialog.close()
+    application.processEvents()
+
+
 def test_drop_event_imports_local_files_but_rejects_remote_file_urls(tmp_path: Path) -> None:
     application = QApplication.instance() or QApplication([])
     context = create_context(tmp_path)
