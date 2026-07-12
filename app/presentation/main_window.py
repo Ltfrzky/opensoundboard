@@ -24,7 +24,6 @@ from PySide6.QtWidgets import (
 
 from app.application.hotkeys import HotkeyCoordinator
 from app.application.service import ImportResult, SoundboardService
-from app.domain.enums import HotkeyStatusState
 from app.domain.enums.playback import PlaybackMode
 from app.domain.errors import HotkeyConflictError, HotkeyRegistrationError
 from app.domain.interfaces import HotkeyService
@@ -65,6 +64,7 @@ class MainWindow(QMainWindow):
         self._active_lanes: list[PlaybackSnapshot] = []
         self._active_sound_ids: set[int] = set()
         self._manage_mode = False
+        self._activity_rail_pinned = False
         self.setWindowTitle("OpenSoundboard")
         self.resize(1280, 760)
         self.setMinimumSize(1000, 620)
@@ -103,6 +103,7 @@ class MainWindow(QMainWindow):
         root_layout.addWidget(workspace, 1)
         root_layout.addWidget(self._build_capability_bar())
         self.setCentralWidget(root)
+        self._sync_activity_rail()
 
     def _build_board_rail(self) -> QWidget:
         rail = QFrame()
@@ -148,6 +149,13 @@ class MainWindow(QMainWindow):
         title_block.addWidget(self.pad_count)
         header_layout.addLayout(title_block)
         header_layout.addStretch()
+        self.activity_toggle_button = QPushButton("Activity (0)")
+        self.activity_toggle_button.setObjectName("activityToggleButton")
+        self.activity_toggle_button.setCheckable(True)
+        self.activity_toggle_button.setIcon(material_icon("equalizer"))
+        self.activity_toggle_button.setMinimumHeight(40)
+        self.activity_toggle_button.clicked.connect(self.toggle_activity_rail)
+        header_layout.addWidget(self.activity_toggle_button)
         drop = QPushButton("Drop audio here")
         drop.setObjectName("linkButton")
         drop.clicked.connect(self._request_managed_import)
@@ -190,8 +198,9 @@ class MainWindow(QMainWindow):
 
     def _build_playback_rail(self) -> QWidget:
         rail = QFrame()
-        rail.setObjectName("playbackRail")
+        rail.setObjectName("activityRail")
         rail.setFixedWidth(240)
+        self.activity_rail = rail
         layout = QVBoxLayout(rail)
         layout.setContentsMargins(12, 18, 12, 12)
         layout.setSpacing(8)
@@ -209,38 +218,8 @@ class MainWindow(QMainWindow):
         self.lane_layout.setContentsMargins(0, 0, 0, 0)
         self.lane_layout.setSpacing(8)
         layout.addWidget(self.lane_host)
-        layout.addWidget(self._build_hotkey_panel())
         layout.addStretch(1)
         return rail
-
-    def _build_hotkey_panel(self) -> QWidget:
-        panel = QFrame()
-        panel.setObjectName("hotkeyPanel")
-        layout = QVBoxLayout(panel)
-        layout.setContentsMargins(0, 12, 0, 0)
-        layout.setSpacing(6)
-        heading = QHBoxLayout()
-        title = QLabel("HOTKEYS")
-        title.setObjectName("eyebrow")
-        heading.addWidget(title)
-        heading.addStretch()
-        status_title = QLabel("Status")
-        status_title.setObjectName("hotkeyStatusHeading")
-        heading.addWidget(status_title)
-        layout.addLayout(heading)
-        self.hotkey_state_label = QLabel()
-        self.hotkey_state_label.setObjectName("hotkeyStateLabel")
-        layout.addWidget(self.hotkey_state_label)
-        self.hotkey_detail_label = QLabel()
-        self.hotkey_detail_label.setObjectName("hotkeyDetailLabel")
-        self.hotkey_detail_label.setWordWrap(True)
-        layout.addWidget(self.hotkey_detail_label)
-        self.hotkey_rows_host = QWidget()
-        self.hotkey_rows_layout = QVBoxLayout(self.hotkey_rows_host)
-        self.hotkey_rows_layout.setContentsMargins(0, 4, 0, 0)
-        self.hotkey_rows_layout.setSpacing(4)
-        layout.addWidget(self.hotkey_rows_host)
-        return panel
 
     def _build_capability_bar(self) -> QWidget:
         bar = QFrame()
@@ -248,7 +227,7 @@ class MainWindow(QMainWindow):
         layout = QHBoxLayout(bar)
         layout.setContentsMargins(18, 8, 18, 8)
         self.capability_label = QLabel()
-        self.capability_label.setObjectName("muted")
+        self.capability_label.setObjectName("capabilityLabel")
         layout.addWidget(self.capability_label, 1)
         button = QPushButton("Hotkey settings")
         button.setObjectName("capabilityButton")
@@ -329,6 +308,7 @@ class MainWindow(QMainWindow):
             item = self.lane_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
+        self._sync_activity_rail()
         if not self._active_lanes:
             self.playback_summary.setText("0 lanes")
             empty = QLabel("Trigger a card to see live progress here.")
@@ -389,6 +369,23 @@ class MainWindow(QMainWindow):
         self.manage_button.style().unpolish(self.manage_button)
         self.manage_button.style().polish(self.manage_button)
         self.refresh_sounds(self.board_list.currentRow())
+
+    def toggle_activity_rail(self) -> None:
+        self._activity_rail_pinned = not self._activity_rail_pinned
+        self._sync_activity_rail()
+
+    def _sync_activity_rail(self) -> None:
+        lane_count = len(self._active_lanes)
+        self.activity_rail.setVisible(bool(lane_count) or self._activity_rail_pinned)
+        self.activity_toggle_button.blockSignals(True)
+        self.activity_toggle_button.setChecked(self._activity_rail_pinned)
+        self.activity_toggle_button.blockSignals(False)
+        self.activity_toggle_button.setText(f"Activity ({lane_count})")
+        self.activity_toggle_button.setToolTip(
+            "Allow activity to collapse when idle"
+            if self._activity_rail_pinned
+            else "Keep activity visible when idle"
+        )
 
     def create_board(self) -> None:
         name, accepted = QInputDialog.getText(self, "Create board", "Board name")
@@ -615,39 +612,6 @@ class MainWindow(QMainWindow):
         panic_value = self.service.settings.get_setting("panic_stop_hotkey", "")
         panic_label = HotkeyBinding.parse(panic_value).display_label if panic_value else None
         self.operator_strip.set_panic_shortcut(panic_label)
-        self._refresh_hotkey_panel(status, panic_label)
-
-    def _refresh_hotkey_panel(self, status, panic_label: str | None) -> None:
-        is_ready = status.state is HotkeyStatusState.READY
-        self.hotkey_state_label.setText("Ready" if is_ready else status.headline)
-        self.hotkey_state_label.setProperty("state", "ready" if is_ready else "unavailable")
-        self.hotkey_state_label.style().unpolish(self.hotkey_state_label)
-        self.hotkey_state_label.style().polish(self.hotkey_state_label)
-        self.hotkey_detail_label.setText(status.detail)
-        while self.hotkey_rows_layout.count():
-            item = self.hotkey_rows_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-        assignments = []
-        for board in self.service.list_boards():
-            assignments.extend(
-                sound for sound in self.service.list_sounds(board.id) if sound.hotkey
-            )
-        for sound in assignments:
-            binding = HotkeyBinding.parse(sound.hotkey)
-            row = QLabel(f"{binding.display_label}  {sound.name}")
-            row.setObjectName(f"hotkeyRow-{sound.id}")
-            row.setProperty("cssRole", "hotkeyRow")
-            self.hotkey_rows_layout.addWidget(row)
-        if panic_label:
-            row = QLabel(f"{panic_label}  Panic Stop")
-            row.setObjectName("hotkeyPanicRow")
-            row.setProperty("cssRole", "hotkeyRow")
-            self.hotkey_rows_layout.addWidget(row)
-        if not assignments and not panic_label:
-            empty = QLabel("No shortcuts assigned.")
-            empty.setObjectName("hotkeyEmptyLabel")
-            self.hotkey_rows_layout.addWidget(empty)
 
     def toggle_hotkeys(self) -> None:
         self.coordinator.set_enabled(not self.coordinator.is_enabled())

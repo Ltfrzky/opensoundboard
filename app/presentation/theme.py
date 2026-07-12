@@ -20,7 +20,7 @@ QFrame[cssRole="soundPad"][missing="true"] {
 QFrame[cssRole="soundPad"][arranging="true"] { background: #141923; border-color: #486476; }
 QLabel#eyebrow { color: #718594; font-size: 10px; font-weight: 700; }
 QLabel#title { font-size: 24px; font-weight: 700; color: #f3f7fb; }
-QLabel#muted, QLabel#fileLabel { color: #91a1b2; font-size: 11px; }
+QLabel#muted, QLabel#fileLabel, QLabel#capabilityLabel { color: #91a1b2; font-size: 11px; }
 QLabel#hotkeyLabel { color: #38d8ff; font-size: 10px; font-weight: 600; }
 QLabel#padCount { color: #91a1b2; font-size: 11px; font-weight: 600; }
 QPushButton[cssRole="hotkeyKeycap"] {

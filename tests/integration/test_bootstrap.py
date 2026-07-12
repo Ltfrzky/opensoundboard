@@ -230,12 +230,17 @@ def test_cue_workspace_uses_four_column_pads_and_arrange_mode(tmp_path: Path) ->
     application.processEvents()
 
 
-def test_signal_console_exposes_playback_rail_and_capability_link(tmp_path: Path) -> None:
+def test_signal_console_exposes_collapsed_activity_rail_and_capability_link(tmp_path: Path) -> None:
     application = QApplication.instance() or QApplication([])
     context = create_context(tmp_path)
     window = MainWindow(context.service, context.hotkeys)
+    window.show()
+    application.processEvents()
 
-    assert window.findChild(QWidget, "playbackRail") is not None
+    activity_rail = window.findChild(QWidget, "activityRail")
+    activity_toggle = window.findChild(QPushButton, "activityToggleButton")
+    assert activity_rail is not None and activity_rail.isHidden()
+    assert activity_toggle is not None and activity_toggle.text() == "Activity (0)"
     capability_button = window.findChild(QPushButton, "capabilityButton")
     assert capability_button is not None
     assert not capability_button.icon().isNull()
@@ -253,13 +258,9 @@ def test_signal_console_exposes_playback_rail_and_capability_link(tmp_path: Path
     application.processEvents()
 
 
-def test_rail_layout_exposes_icon_boards_settings_and_hotkey_ledger(tmp_path: Path) -> None:
+def test_rail_layout_exposes_icon_boards_settings_and_capability_status(tmp_path: Path) -> None:
     application = QApplication.instance() or QApplication([])
     context = create_context(tmp_path)
-    board = context.service.list_boards()[0]
-    source = tmp_path / "intro.wav"
-    source.write_bytes(b"RIFF")
-    context.service.sounds.save_sound(Sound(0, board.id, "Intro", source, hotkey="Ctrl+1"))
     window = MainWindow(context.service, context.hotkeys)
     window.refresh_boards()
     window._refresh_capability()
@@ -271,9 +272,9 @@ def test_rail_layout_exposes_icon_boards_settings_and_hotkey_ledger(tmp_path: Pa
     assert board_settings.text() == "Edit board"
     assert board_settings.toolTip() == "Board settings"
     assert window.findChild(QPushButton, "settingsButton") is not None
-    assert window.findChild(QWidget, "hotkeyPanel") is not None
-    assert window.findChild(QLabel, "hotkeyStateLabel") is not None
-    assert window.findChild(QLabel, "hotkeyRow-1").text() == "Ctrl + 1  Intro"
+    assert window.findChild(QWidget, "hotkeyPanel") is None
+    capability = window.findChild(QLabel, "capabilityLabel")
+    assert capability is not None and "Global hotkeys" in capability.text()
 
     window.close()
     application.processEvents()
@@ -287,9 +288,13 @@ def test_active_playback_rail_renders_compact_lane_and_stops_it(tmp_path: Path) 
     source.write_bytes(b"RIFF")
     sound = context.service.sounds.save_sound(Sound(0, board.id, "Intro", source))
     window = MainWindow(context.service, context.hotkeys)
+    window.show()
+    application.processEvents()
     window._active_lanes = [PlaybackSnapshot("lane-1", sound.id, 4_000, 12_000)]
     window._refresh_lanes()
 
+    activity_rail = window.findChild(QWidget, "activityRail")
+    assert activity_rail is not None and not activity_rail.isHidden()
     lane = window.findChild(QFrame, "playbackLane-lane-1")
     timer = window.findChild(QLabel, "playbackTime-lane-1")
     stop = window.findChild(QPushButton, "stopLane-lane-1")
@@ -305,7 +310,7 @@ def test_active_playback_rail_renders_compact_lane_and_stops_it(tmp_path: Path) 
     application.processEvents()
 
 
-def test_hotkey_ledger_preserves_permission_required_state(tmp_path: Path) -> None:
+def test_capability_bar_preserves_permission_required_state(tmp_path: Path) -> None:
     application = QApplication.instance() or QApplication([])
     context = create_context(tmp_path)
     window = MainWindow(context.service, context.hotkeys)
@@ -316,12 +321,46 @@ def test_hotkey_ledger_preserves_permission_required_state(tmp_path: Path) -> No
         "Grant Accessibility permission to use global hotkeys.",
     )
 
-    window._refresh_hotkey_panel(status, None)
+    window.coordinator.status = lambda: status
+    window._refresh_capability()
 
-    state = window.findChild(QLabel, "hotkeyStateLabel")
-    assert state is not None
-    assert state.text() == "macOS permission may be required"
-    assert state.property("state") == "unavailable"
+    capability = window.findChild(QLabel, "capabilityLabel")
+    assert capability is not None
+    assert "macOS permission may be required" in capability.text()
+    assert "Grant Accessibility permission" in capability.text()
+    window.close()
+    application.processEvents()
+
+
+def test_activity_rail_can_be_pinned_while_idle_and_auto_expands_for_playback(
+    tmp_path: Path,
+) -> None:
+    application = QApplication.instance() or QApplication([])
+    context = create_context(tmp_path)
+    board = context.service.list_boards()[0]
+    source = tmp_path / "activity.wav"
+    source.write_bytes(b"RIFF")
+    sound = context.service.sounds.save_sound(Sound(0, board.id, "Activity", source))
+    window = MainWindow(context.service, context.hotkeys)
+    window.show()
+    application.processEvents()
+    activity_rail = window.findChild(QWidget, "activityRail")
+    activity_toggle = window.findChild(QPushButton, "activityToggleButton")
+
+    assert activity_rail is not None and activity_rail.isHidden()
+    assert activity_toggle is not None
+    activity_toggle.click()
+    assert not activity_rail.isHidden()
+    activity_toggle.click()
+    assert activity_rail.isHidden()
+
+    window._active_lanes = [PlaybackSnapshot("lane-1", sound.id, 1_000, 2_000)]
+    window._refresh_lanes()
+    assert not activity_rail.isHidden()
+
+    window._active_lanes = []
+    window._refresh_lanes()
+    assert activity_rail.isHidden()
     window.close()
     application.processEvents()
 
@@ -424,6 +463,7 @@ def test_operator_strip_routes_volume_and_all_playback_modes(tmp_path: Path) -> 
     for object_name, expected_mode in cases:
         button = operator_strip.findChild(QPushButton, object_name)
         assert button is not None
+        assert button.toolTip()
         button.click()
         assert context.service.playback_mode() is expected_mode
 
