@@ -163,6 +163,9 @@ QLabel[cssRole="hotkeyRow"] {
 QListWidget#settingsCategories { background: #0a1016; border-right: 1px solid #1d2a36; }
 QListWidget#settingsCategories::item { min-height: 28px; }
 QLabel#settingsPageTitle { color: #f3f7fb; font-size: 16px; font-weight: 700; }
+QLabel#hotkeyDebounceLabel, QLabel#panicShortcutHeading {
+    color: #b7c4ce; font-size: 12px; font-weight: 600;
+}
 QLabel#generalSettingsInfo { color: #91a1b2; font-size: 11px; }
 QScrollArea { border: none; background: #0c1219; }
 QScrollArea QWidget#cueContent, QScrollArea QWidget#qt_scrollarea_viewport { background: #0c1219; }

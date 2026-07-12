@@ -19,7 +19,7 @@ from app.bootstrap import create_context
 from app.domain.enums.hotkey_status import HotkeyStatusState
 from app.domain.enums.playback import PlaybackMode
 from app.domain.interfaces import HotkeyStatus
-from app.domain.models import PlaybackSnapshot, Sound
+from app.domain.models import HotkeyBinding, PlaybackSnapshot, Sound
 from app.presentation.board_settings import BoardSettingsDialog
 from app.presentation.main_window import MainWindow
 from app.presentation.settings_dialog import SettingsDialog
@@ -96,6 +96,30 @@ def test_settings_dialog_exposes_general_and_hotkey_pages(tmp_path: Path) -> Non
     ]
     assert "Library location" in dialog.general_page_text.text()
     assert dialog.hotkey_page.findChild(QPushButton, "reRegisterHotkeysButton") is not None
+    dialog.close()
+    application.processEvents()
+
+
+def test_hotkey_preferences_label_panic_stop_and_disable_an_empty_clear_action(
+    tmp_path: Path,
+) -> None:
+    application = QApplication.instance() or QApplication([])
+    context = create_context(tmp_path)
+    dialog = SettingsDialog(context.service, HotkeyCoordinator(context.service, context.hotkeys))
+
+    heading = dialog.hotkey_page.findChild(QLabel, "panicShortcutHeading")
+    debounce = dialog.hotkey_page.findChild(QLabel, "hotkeyDebounceLabel")
+    clear = dialog.hotkey_page.findChild(QPushButton, "clearPanicButton")
+    reregister = dialog.hotkey_page.findChild(QPushButton, "reRegisterHotkeysButton")
+    assert heading is not None and heading.text() == "Panic Stop shortcut"
+    assert debounce is not None and debounce.text() == "Trigger debounce"
+    assert clear is not None and not clear.isEnabled()
+    assert reregister is not None and reregister.text() == "Re-register assigned hotkeys"
+
+    dialog._set_panic_binding(HotkeyBinding.parse("Ctrl+Shift+P"))
+    assert clear.isEnabled()
+    dialog.clear_panic()
+    assert not clear.isEnabled()
     dialog.close()
     application.processEvents()
 
