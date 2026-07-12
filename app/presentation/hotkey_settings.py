@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from PySide6.QtWidgets import (
-    QCheckBox,
     QDialog,
     QDialogButtonBox,
     QHBoxLayout,
@@ -13,7 +12,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.application.hotkeys import HotkeyCoordinator
-from app.domain.errors import HotkeyRegistrationError
+from app.domain.errors import HotkeyConflictError, HotkeyRegistrationError
 from app.domain.models import HotkeyBinding
 from app.presentation.hotkey_dialog import HotkeyCaptureDialog
 
@@ -24,9 +23,7 @@ class HotkeySettingsDialog(QDialog):
         self.coordinator = coordinator
         self.setWindowTitle("Hotkey settings")
         self.panic_binding = self._current_panic()
-        self.capability_label = QLabel(coordinator.capability().message)
-        self.enabled_checkbox = QCheckBox("Enable global hotkeys")
-        self.enabled_checkbox.setChecked(coordinator.is_enabled())
+        self.capability_label = QLabel(self._status_text())
         self.debounce_spin = QSpinBox()
         self.debounce_spin.setRange(0, 2000)
         self.debounce_spin.setSuffix(" ms debounce")
@@ -49,7 +46,6 @@ class HotkeySettingsDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout = QVBoxLayout(self)
         layout.addWidget(self.capability_label)
-        layout.addWidget(self.enabled_checkbox)
         layout.addWidget(self.debounce_spin)
         panic_row = QHBoxLayout()
         panic_row.addWidget(self.panic_label)
@@ -71,9 +67,8 @@ class HotkeySettingsDialog(QDialog):
 
     def reregister(self) -> None:
         errors = self.coordinator.re_register_all()
-        self.capability_label.setText(
-            "Re-registered all hotkeys." if not errors else " | ".join(errors)
-        )
+        message = "Re-registered all hotkeys." if not errors else " | ".join(errors)
+        self.capability_label.setText(message)
 
     def save(self) -> None:
         self.coordinator.service.settings.set_setting(
@@ -81,12 +76,17 @@ class HotkeySettingsDialog(QDialog):
         )
         try:
             self.coordinator.assign_panic_stop(self.panic_binding)
-            errors = self.coordinator.set_enabled(self.enabled_checkbox.isChecked())
-        except HotkeyRegistrationError as error:
+            errors = self.coordinator.re_register_all() if self.coordinator.is_enabled() else []
+        except (HotkeyConflictError, HotkeyRegistrationError) as error:
             QMessageBox.warning(self, "Hotkey registration failed", str(error))
             return
         self.capability_label.setText("Saved." if not errors else " | ".join(errors))
         self.accept()
+
+    def _status_text(self) -> str:
+        status = self.coordinator.status()
+        pending = " Assignments are pending retry." if status.pending_retry else ""
+        return f"{status.headline}. {status.detail}{pending}"
 
     def _current_panic(self) -> HotkeyBinding | None:
         value = self.coordinator.service.settings.get_setting("panic_stop_hotkey", "")

@@ -5,8 +5,9 @@ import time
 from collections.abc import Callable
 
 from app.application.service import SoundboardService
+from app.domain.enums import HotkeyStatusState
 from app.domain.errors import HotkeyConflictError, HotkeyRegistrationError
-from app.domain.interfaces import HotkeyCapability, HotkeyService
+from app.domain.interfaces import HotkeyCapability, HotkeyService, HotkeyStatus
 from app.domain.models import HotkeyBinding
 
 
@@ -27,6 +28,7 @@ class HotkeyCoordinator:
         self._logger = logging.getLogger("opensoundboard")
         self._sound_trigger = sound_trigger
         self._panic_trigger = panic_trigger
+        self._registration_errors: list[str] = []
 
     def capability(self) -> HotkeyCapability:
         return self.hotkeys.capability()
@@ -34,10 +36,55 @@ class HotkeyCoordinator:
     def is_enabled(self) -> bool:
         return self.service.settings.get_setting("hotkeys_enabled", "0") == "1"
 
+    def status(self) -> HotkeyStatus:
+        capability = self.capability()
+        if not self.is_enabled():
+            return HotkeyStatus(
+                HotkeyStatusState.DISABLED_BY_USER,
+                False,
+                "Global hotkeys disabled",
+                "Assignments remain saved and can be registered when you enable global hotkeys.",
+            )
+        if self._registration_errors:
+            state = (
+                HotkeyStatusState.MACOS_PERMISSION_REQUIRED
+                if capability.state is HotkeyStatusState.MACOS_PERMISSION_REQUIRED
+                else HotkeyStatusState.REGISTRATION_FAILED
+            )
+            return HotkeyStatus(
+                state,
+                False,
+                "Global hotkey registration failed",
+                " | ".join(self._registration_errors),
+                pending_retry=True,
+            )
+        if not capability.available:
+            return HotkeyStatus(
+                capability.state,
+                False,
+                "Global hotkeys unavailable",
+                capability.message,
+                pending_retry=True,
+            )
+        if capability.state is HotkeyStatusState.MACOS_PERMISSION_REQUIRED:
+            return HotkeyStatus(
+                capability.state,
+                True,
+                "macOS permission may be required",
+                capability.message,
+            )
+        return HotkeyStatus(
+            HotkeyStatusState.READY,
+            True,
+            "Global hotkeys ready",
+            capability.message,
+        )
+
     def set_enabled(self, enabled: bool) -> list[str]:
         self.service.settings.set_setting("hotkeys_enabled", "1" if enabled else "0")
         if not enabled:
             self.hotkeys.unregister_all()
+            self._registration_errors = []
             return []
         return self.load_and_register_all()
 
@@ -60,6 +107,7 @@ class HotkeyCoordinator:
             error = self._register(panic, self._trigger_panic)
             if error:
                 errors.append(f"Panic Stop: {error}")
+        self._registration_errors = errors
         return errors
 
     def re_register_all(self) -> list[str]:
@@ -96,11 +144,13 @@ class HotkeyCoordinator:
                     )
                 if owner is None:
                     self.service.set_sound_hotkey(sound_id, canonical)
+                self._registration_errors = [result.message]
                 raise HotkeyRegistrationError(result.message)
 
         if owner is not None:
             self.service.set_sound_hotkey(owner.id, None)
         self.service.set_sound_hotkey(sound_id, canonical)
+        self._registration_errors = []
 
     def clear_sound(self, sound_id: int) -> None:
         sound = self.service.get_sound(sound_id)
@@ -135,10 +185,12 @@ class HotkeyCoordinator:
                     )
                 else:
                     self.service.settings.set_setting("panic_stop_hotkey", binding.canonical)
+                self._registration_errors = [result.message]
                 raise HotkeyRegistrationError(result.message)
         if owner is not None:
             self.service.set_sound_hotkey(owner.id, None)
         self.service.settings.set_setting("panic_stop_hotkey", binding.canonical)
+        self._registration_errors = []
 
     def shutdown(self) -> None:
         self.hotkeys.unregister_all()

@@ -24,3 +24,16 @@ def test_duplicate_sound_hotkey_is_rejected(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="hotkey"):
         store.save_sound(Sound(0, board.id, "Two", tmp_path / "two.wav", hotkey="Ctrl+1"))
+
+
+def test_board_icons_default_and_normalize_legacy_null_values(tmp_path: Path) -> None:
+    database = tmp_path / "soundboard.sqlite3"
+    store = SQLiteStore(database)
+
+    assert store.list_boards()[0].icon == "equalizer"
+    with store._connect() as connection:
+        connection.execute("UPDATE boards SET icon = NULL")
+
+    normalized = SQLiteStore(database)
+
+    assert normalized.list_boards()[0].icon == "equalizer"

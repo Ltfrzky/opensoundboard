@@ -31,6 +31,9 @@ class FileLibrary:
         shutil.copy2(source, target)
         return target
 
+    def is_managed(self, path: Path) -> bool:
+        return Path(path).resolve().parent == self.library_path.resolve()
+
     @staticmethod
     def normalized(path: Path) -> str:
         return os.path.normcase(str(Path(path).resolve()))

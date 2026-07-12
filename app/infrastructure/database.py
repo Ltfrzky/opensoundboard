@@ -32,7 +32,7 @@ class SQLiteStore:
                     id INTEGER PRIMARY KEY, board_id INTEGER NOT NULL REFERENCES boards(id),
                     name TEXT NOT NULL, file_path TEXT NOT NULL, source_path TEXT,
                     volume INTEGER NOT NULL DEFAULT 100, loop_enabled INTEGER NOT NULL DEFAULT 0,
-                    sort_order INTEGER NOT NULL DEFAULT 0, hotkey TEXT
+                    sort_order INTEGER NOT NULL DEFAULT 0, hotkey TEXT, duration_ms INTEGER
                 );
                 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
                 """
@@ -42,13 +42,17 @@ class SQLiteStore:
             }
             if "hotkey" not in columns:
                 connection.execute("ALTER TABLE sounds ADD COLUMN hotkey TEXT")
+            if "duration_ms" not in columns:
+                connection.execute("ALTER TABLE sounds ADD COLUMN duration_ms INTEGER")
             connection.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_sounds_hotkey "
                 "ON sounds(hotkey) WHERE hotkey IS NOT NULL"
             )
+            connection.execute("UPDATE boards SET icon = 'equalizer' WHERE icon IS NULL")
             if connection.execute("SELECT COUNT(*) FROM boards").fetchone()[0] == 0:
                 connection.execute(
-                    "INSERT INTO boards(name, sort_order) VALUES (?, 0)", ("My Sounds",)
+                    "INSERT INTO boards(name, icon, sort_order) VALUES (?, ?, 0)",
+                    ("My Sounds", "equalizer"),
                 )
 
     def list_boards(self) -> list[Board]:
@@ -60,20 +64,30 @@ class SQLiteStore:
         ]
 
     def create_board(self, name: str) -> Board:
-        board = Board(0, name)
+        board = Board(0, name, icon="equalizer")
         with self._connect() as connection:
             order = connection.execute(
                 "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM boards"
             ).fetchone()[0]
             cursor = connection.execute(
-                "INSERT INTO boards(name, sort_order) VALUES (?, ?)", (board.name, order)
+                "INSERT INTO boards(name, icon, sort_order) VALUES (?, ?, ?)",
+                (board.name, board.icon, order),
             )
-        return Board(cursor.lastrowid, board.name, sort_order=order)
+        return Board(cursor.lastrowid, board.name, icon=board.icon, sort_order=order)
 
     def rename_board(self, board_id: int, name: str) -> Board:
         board = Board(board_id, name)
         with self._connect() as connection:
             connection.execute("UPDATE boards SET name = ? WHERE id = ?", (board.name, board_id))
+        return board
+
+    def update_board(self, board_id: int, *, name: str, icon: str) -> Board:
+        board = Board(board_id, name, icon=icon)
+        with self._connect() as connection:
+            connection.execute(
+                "UPDATE boards SET name = ?, icon = ? WHERE id = ?",
+                (board.name, board.icon, board_id),
+            )
         return board
 
     def delete_board(self, board_id: int) -> None:
@@ -105,7 +119,7 @@ class SQLiteStore:
                 try:
                     connection.execute(
                         "UPDATE sounds SET board_id=?, name=?, file_path=?, source_path=?, "
-                        "volume=?, loop_enabled=?, hotkey=? WHERE id=?",
+                        "volume=?, loop_enabled=?, hotkey=?, duration_ms=? WHERE id=?",
                         (
                             sound.board_id,
                             sound.name,
@@ -114,6 +128,7 @@ class SQLiteStore:
                             sound.volume,
                             int(sound.loop_enabled),
                             sound.hotkey,
+                            sound.duration_ms,
                             sound.id,
                         ),
                     )
@@ -127,7 +142,8 @@ class SQLiteStore:
             try:
                 cursor = connection.execute(
                     "INSERT INTO sounds(board_id, name, file_path, source_path, volume, "
-                    "loop_enabled, sort_order, hotkey) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    "loop_enabled, sort_order, hotkey, duration_ms) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         sound.board_id,
                         sound.name,
@@ -137,6 +153,7 @@ class SQLiteStore:
                         int(sound.loop_enabled),
                         order,
                         sound.hotkey,
+                        sound.duration_ms,
                     ),
                 )
             except sqlite3.IntegrityError as error:
@@ -151,18 +168,22 @@ class SQLiteStore:
             sound.loop_enabled,
             order,
             sound.hotkey,
+            sound.duration_ms,
         )
 
     def delete_sound(self, sound_id: int) -> None:
         with self._connect() as connection:
             connection.execute("DELETE FROM sounds WHERE id = ?", (sound_id,))
 
-    def has_source_path(self, source_path: str) -> bool:
+    def has_source_path(self, source_path: str, *, exclude_id: int | None = None) -> bool:
         with self._connect() as connection:
+            query = "SELECT 1 FROM sounds WHERE source_path = ?"
+            values: tuple[object, ...] = (source_path,)
+            if exclude_id is not None:
+                query += " AND id != ?"
+                values = (source_path, exclude_id)
             return (
-                connection.execute(
-                    "SELECT 1 FROM sounds WHERE source_path = ?", (source_path,)
-                ).fetchone()
+                connection.execute(query, values).fetchone()
                 is not None
             )
 
@@ -196,4 +217,5 @@ class SQLiteStore:
             bool(row["loop_enabled"]),
             row["sort_order"],
             row["hotkey"],
+            row["duration_ms"],
         )

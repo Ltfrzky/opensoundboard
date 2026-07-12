@@ -16,6 +16,7 @@ class Sound:
     loop_enabled: bool = False
     sort_order: int = 0
     hotkey: str | None = None
+    duration_ms: int | None = None
 
     def __post_init__(self) -> None:
         name = self.name.strip()
@@ -23,6 +24,8 @@ class Sound:
             raise InvalidSoundError("Sound name cannot be blank")
         if not 0 <= self.volume <= 100:
             raise InvalidSoundError("Sound volume must be between 0 and 100")
+        if self.duration_ms is not None and self.duration_ms < 0:
+            raise InvalidSoundError("Sound duration cannot be negative")
         object.__setattr__(self, "name", name)
         object.__setattr__(self, "file_path", Path(self.file_path))
         if self.source_path is not None:

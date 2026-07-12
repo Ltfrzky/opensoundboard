@@ -32,4 +32,5 @@ def test_sound_reports_missing_file() -> None:
 def test_playback_enums_express_the_prototype_policies() -> None:
     assert PlaybackMode.OVERLAP.value == "overlap"
     assert PlaybackMode.STOP_PREVIOUS.value == "stop_previous"
+    assert PlaybackMode.STOP_SAME_SOUND.value == "stop_same_sound"
     assert PlaybackState.PLAYING.value == "playing"

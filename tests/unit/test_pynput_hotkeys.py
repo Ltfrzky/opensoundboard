@@ -1,3 +1,4 @@
+from app.domain.enums import HotkeyStatusState
 from app.domain.models import HotkeyBinding
 from app.infrastructure.hotkeys.pynput_service import PynputHotkeyService
 
@@ -56,6 +57,7 @@ def test_wayland_capability_is_explicitly_unavailable() -> None:
 
     assert capability.available is False
     assert "Wayland" in capability.message
+    assert capability.state is HotkeyStatusState.WAYLAND_UNSUPPORTED
 
 
 def test_missing_dependency_returns_failure_without_importing_backend() -> None:
@@ -70,3 +72,15 @@ def test_missing_dependency_returns_failure_without_importing_backend() -> None:
 
     assert result.success is False
     assert "pynput" in result.message
+
+
+def test_x11_and_macos_capabilities_have_explicit_statuses() -> None:
+    x11_missing = PynputHotkeyService(
+        platform_name="linux", environment={}, dependency_available=True
+    ).capability()
+    macos = PynputHotkeyService(
+        platform_name="darwin", environment={}, dependency_available=True
+    ).capability()
+
+    assert x11_missing.state is HotkeyStatusState.X11_DISPLAY_MISSING
+    assert macos.state is HotkeyStatusState.MACOS_PERMISSION_REQUIRED

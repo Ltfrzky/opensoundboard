@@ -6,7 +6,7 @@ from app.application.hotkeys import HotkeyCoordinator
 from app.application.service import SoundboardService
 from app.domain.errors import HotkeyConflictError, HotkeyRegistrationError
 from app.domain.interfaces import HotkeyCapability, HotkeyRegistrationResult
-from app.domain.models import HotkeyBinding, Sound
+from app.domain.models import HotkeyBinding, PlaybackSnapshot, Sound
 from app.infrastructure.database import SQLiteStore
 from app.infrastructure.file_library import FileLibrary
 
@@ -15,15 +15,29 @@ class FakeAudioEngine:
     def __init__(self) -> None:
         self.played: list[int] = []
         self.stop_all_calls = 0
+        self.lanes: dict[str, PlaybackSnapshot] = {}
 
-    def play(self, sound: Sound, allow_overlap: bool) -> None:
+    def play(self, sound: Sound, lane_id: str) -> None:
         self.played.append(sound.id)
+        self.lanes[lane_id] = PlaybackSnapshot(lane_id, sound.id)
 
-    def stop(self, sound_id: int) -> None:
-        return None
+    def active_lanes(self) -> list[PlaybackSnapshot]:
+        return list(self.lanes.values())
+
+    def stop_lane(self, lane_id: str) -> None:
+        self.lanes.pop(lane_id, None)
+
+    def stop_sound(self, sound_id: int) -> None:
+        self.lanes = {
+            lane_id: lane for lane_id, lane in self.lanes.items() if lane.sound_id != sound_id
+        }
 
     def stop_all(self) -> None:
         self.stop_all_calls += 1
+        self.lanes.clear()
+
+    def set_master_volume(self, volume: int) -> None:
+        return None
 
 
 class FakeHotkeyService:
@@ -59,7 +73,9 @@ def context(tmp_path: Path):
     audio = FakeAudioEngine()
     service = SoundboardService(store, store, store, FileLibrary(tmp_path / "library"), audio)
     board = store.list_boards()[0]
-    sound = store.save_sound(Sound(0, board.id, "Horn", tmp_path / "horn.wav"))
+    source = tmp_path / "horn.wav"
+    source.write_bytes(b"RIFF")
+    sound = store.save_sound(Sound(0, board.id, "Horn", source))
     hotkeys = FakeHotkeyService()
     return service, audio, sound, hotkeys, HotkeyCoordinator(service, hotkeys)
 

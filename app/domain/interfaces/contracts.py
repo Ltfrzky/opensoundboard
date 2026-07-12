@@ -2,13 +2,28 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
 
-from app.domain.models import Board, HotkeyBinding, Sound
+from app.domain.enums import HotkeyStatusState
+from app.domain.models import Board, HotkeyBinding, PlaybackSnapshot, Sound
 
 
 @dataclass(frozen=True, slots=True)
 class HotkeyCapability:
     available: bool
     message: str
+    state: HotkeyStatusState = HotkeyStatusState.READY
+
+    @classmethod
+    def wayland(cls, message: str) -> "HotkeyCapability":
+        return cls(False, message, HotkeyStatusState.WAYLAND_UNSUPPORTED)
+
+
+@dataclass(frozen=True, slots=True)
+class HotkeyStatus:
+    state: HotkeyStatusState
+    available: bool
+    headline: str
+    detail: str
+    pending_retry: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,15 +33,19 @@ class HotkeyRegistrationResult:
 
 
 class AudioEngine(Protocol):
-    def play(self, sound: Sound, allow_overlap: bool) -> None: ...
-    def stop(self, sound_id: int) -> None: ...
+    def play(self, sound: Sound, lane_id: str) -> None: ...
+    def active_lanes(self) -> list[PlaybackSnapshot]: ...
+    def stop_lane(self, lane_id: str) -> None: ...
+    def stop_sound(self, sound_id: int) -> None: ...
     def stop_all(self) -> None: ...
+    def set_master_volume(self, volume: int) -> None: ...
 
 
 class BoardRepository(Protocol):
     def list_boards(self) -> list[Board]: ...
     def create_board(self, name: str) -> Board: ...
     def rename_board(self, board_id: int, name: str) -> Board: ...
+    def update_board(self, board_id: int, *, name: str, icon: str) -> Board: ...
     def delete_board(self, board_id: int) -> None: ...
 
 
@@ -35,7 +54,7 @@ class SoundRepository(Protocol):
     def get_sound(self, sound_id: int) -> Sound: ...
     def save_sound(self, sound: Sound) -> Sound: ...
     def delete_sound(self, sound_id: int) -> None: ...
-    def has_source_path(self, source_path: str) -> bool: ...
+    def has_source_path(self, source_path: str, *, exclude_id: int | None = None) -> bool: ...
 
 
 class SettingsRepository(Protocol):

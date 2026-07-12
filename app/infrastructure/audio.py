@@ -1,68 +1,101 @@
 from __future__ import annotations
 
-from collections import defaultdict
 from dataclasses import dataclass
 
 from PySide6.QtCore import QUrl
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 
-from app.domain.models import Sound
+from app.domain.models import PlaybackSnapshot, Sound
 
 
 @dataclass(slots=True)
 class ActivePlayback:
+    sound_id: int
     player: QMediaPlayer
     output: QAudioOutput
     sound_volume: int
+    position_ms: int = 0
+    duration_ms: int | None = None
 
 
 class QtAudioEngine:
-    """Qt Multimedia playback adapter that can retain overlapping players."""
+    """Qt Multimedia adapter with independently controllable live playback lanes."""
 
     def __init__(self) -> None:
-        self._players: dict[int, list[ActivePlayback]] = defaultdict(list)
+        self._players: dict[str, ActivePlayback] = {}
         self._master_volume = 100
 
-    def play(self, sound: Sound, allow_overlap: bool) -> None:
-        if not allow_overlap:
-            self.stop_all()
+    def play(self, sound: Sound, lane_id: str) -> None:
         output = QAudioOutput()
         output.setVolume((sound.volume / 100) * (self._master_volume / 100))
         player = QMediaPlayer()
         player.setAudioOutput(output)
         player.setSource(QUrl.fromLocalFile(str(sound.file_path)))
         player.setLoops(QMediaPlayer.Loops.Infinite if sound.loop_enabled else 1)
+        self._players[lane_id] = ActivePlayback(
+            sound.id, player, output, sound.volume, duration_ms=sound.duration_ms
+        )
+        player.positionChanged.connect(
+            lambda position, identifier=lane_id, source=player: self._update_position(
+                identifier, source, position
+            )
+        )
+        player.durationChanged.connect(
+            lambda duration, identifier=lane_id, source=player: self._update_duration(
+                identifier, source, duration
+            )
+        )
         player.mediaStatusChanged.connect(
-            lambda status, identifier=sound.id, source=player: self._remove_finished(
+            lambda status, identifier=lane_id, source=player: self._remove_finished(
                 identifier, source, status
             )
         )
-        self._players[sound.id].append(ActivePlayback(player, output, sound.volume))
         player.play()
 
-    def stop(self, sound_id: int) -> None:
-        for playback in self._players.pop(sound_id, []):
+    def active_lanes(self) -> list[PlaybackSnapshot]:
+        return [
+            PlaybackSnapshot(lane_id, playback.sound_id, playback.position_ms, playback.duration_ms)
+            for lane_id, playback in self._players.items()
+        ]
+
+    def stop_lane(self, lane_id: str) -> None:
+        playback = self._players.pop(lane_id, None)
+        if playback is not None:
             playback.player.stop()
 
+    def stop_sound(self, sound_id: int) -> None:
+        for lane_id, playback in tuple(self._players.items()):
+            if playback.sound_id == sound_id:
+                self.stop_lane(lane_id)
+
     def stop_all(self) -> None:
-        for sound_id in tuple(self._players):
-            self.stop(sound_id)
+        for lane_id in tuple(self._players):
+            self.stop_lane(lane_id)
 
     def set_master_volume(self, volume: int) -> None:
         self._master_volume = max(0, min(100, volume))
-        for players in self._players.values():
-            for playback in players:
-                playback.output.setVolume(
-                    (playback.sound_volume / 100) * (self._master_volume / 100)
-                )
+        for playback in self._players.values():
+            playback.output.setVolume(
+                (playback.sound_volume / 100) * (self._master_volume / 100)
+            )
+
+    def _update_position(self, lane_id: str, player: QMediaPlayer, position: int) -> None:
+        playback = self._players.get(lane_id)
+        if playback is not None and playback.player is player:
+            playback.position_ms = max(0, position)
+
+    def _update_duration(self, lane_id: str, player: QMediaPlayer, duration: int) -> None:
+        playback = self._players.get(lane_id)
+        if playback is not None and playback.player is player:
+            playback.duration_ms = duration if duration > 0 else None
 
     def _remove_finished(
-        self, sound_id: int, player: QMediaPlayer, status: QMediaPlayer.MediaStatus
+        self, lane_id: str, player: QMediaPlayer, status: QMediaPlayer.MediaStatus
     ) -> None:
-        if status is QMediaPlayer.MediaStatus.EndOfMedia:
-            active = self._players.get(sound_id, [])
-            remaining = [playback for playback in active if playback.player is not player]
-            if remaining:
-                self._players[sound_id] = remaining
-            else:
-                self._players.pop(sound_id, None)
+        playback = self._players.get(lane_id)
+        if (
+            status is QMediaPlayer.MediaStatus.EndOfMedia
+            and playback is not None
+            and playback.player is player
+        ):
+            self._players.pop(lane_id, None)

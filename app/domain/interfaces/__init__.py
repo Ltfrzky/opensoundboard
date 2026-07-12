@@ -4,6 +4,7 @@ from .contracts import (
     HotkeyCapability,
     HotkeyRegistrationResult,
     HotkeyService,
+    HotkeyStatus,
     SettingsRepository,
     SoundRepository,
 )
@@ -14,6 +15,7 @@ __all__ = [
     "HotkeyCapability",
     "HotkeyRegistrationResult",
     "HotkeyService",
+    "HotkeyStatus",
     "SettingsRepository",
     "SoundRepository",
 ]

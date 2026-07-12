@@ -49,16 +49,25 @@ def test_hotkey_settings_dialog_exposes_capability_and_enable_switch(tmp_path) -
     dialog = HotkeySettingsDialog(HotkeyCoordinator(service, DisabledHotkeyService()))
 
     assert dialog.capability_label.text()
-    assert dialog.enabled_checkbox.isChecked() is False
+    assert not hasattr(dialog, "enabled_checkbox")
     dialog.close()
 
 
 class _Audio:
-    def play(self, sound, allow_overlap):
+    def play(self, sound, lane_id):
         return None
 
-    def stop(self, sound_id):
+    def active_lanes(self):
+        return []
+
+    def stop_lane(self, lane_id):
+        return None
+
+    def stop_sound(self, sound_id):
         return None
 
     def stop_all(self):
+        return None
+
+    def set_master_volume(self, volume):
         return None
