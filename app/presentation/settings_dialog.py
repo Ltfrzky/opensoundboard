@@ -80,6 +80,9 @@ class SettingsDialog(QDialog):
         self.hotkey_capability_label = QLabel(self._status_text())
         self.hotkey_capability_label.setWordWrap(True)
         layout.addWidget(self.hotkey_capability_label)
+        debounce_label = QLabel("Trigger debounce")
+        debounce_label.setObjectName("hotkeyDebounceLabel")
+        layout.addWidget(debounce_label)
         self.debounce_spin = QSpinBox()
         self.debounce_spin.setRange(0, 2000)
         self.debounce_spin.setSuffix(" ms debounce")
@@ -87,35 +90,40 @@ class SettingsDialog(QDialog):
             int(self.service.settings.get_setting("hotkey_debounce_ms", "150"))
         )
         layout.addWidget(self.debounce_spin)
-        self.panic_binding = self._current_panic()
-        self.panic_label = QLabel(
-            self.panic_binding.display_label if self.panic_binding else "Not assigned"
-        )
+        panic_heading = QLabel("Panic Stop shortcut")
+        panic_heading.setObjectName("panicShortcutHeading")
+        layout.addWidget(panic_heading)
+        self.panic_label = QLabel()
         capture = QPushButton("Capture Panic Stop")
         capture.clicked.connect(self.capture_panic)
-        clear = QPushButton("Clear")
-        clear.clicked.connect(self.clear_panic)
-        self.reregister_button = QPushButton("Re-register all")
+        self.clear_panic_button = QPushButton("Clear")
+        self.clear_panic_button.setObjectName("clearPanicButton")
+        self.clear_panic_button.clicked.connect(self.clear_panic)
+        self.reregister_button = QPushButton("Re-register assigned hotkeys")
         self.reregister_button.setObjectName("reRegisterHotkeysButton")
         self.reregister_button.clicked.connect(self.reregister)
         row = QHBoxLayout()
         row.addWidget(self.panic_label)
         row.addWidget(capture)
-        row.addWidget(clear)
+        row.addWidget(self.clear_panic_button)
         layout.addLayout(row)
         layout.addWidget(self.reregister_button)
         layout.addStretch()
+        self._set_panic_binding(self._current_panic())
         return page
 
     def capture_panic(self) -> None:
         binding = HotkeyCaptureDialog.capture(self)
         if binding is not None:
-            self.panic_binding = binding
-            self.panic_label.setText(binding.display_label)
+            self._set_panic_binding(binding)
 
     def clear_panic(self) -> None:
-        self.panic_binding = None
-        self.panic_label.setText("Not assigned")
+        self._set_panic_binding(None)
+
+    def _set_panic_binding(self, binding: HotkeyBinding | None) -> None:
+        self.panic_binding = binding
+        self.panic_label.setText(binding.display_label if binding else "Not assigned")
+        self.clear_panic_button.setEnabled(binding is not None)
 
     def reregister(self) -> None:
         errors = self.coordinator.re_register_all()

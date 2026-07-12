@@ -19,7 +19,7 @@ from app.bootstrap import create_context
 from app.domain.enums.hotkey_status import HotkeyStatusState
 from app.domain.enums.playback import PlaybackMode
 from app.domain.interfaces import HotkeyStatus
-from app.domain.models import PlaybackSnapshot, Sound
+from app.domain.models import HotkeyBinding, PlaybackSnapshot, Sound
 from app.presentation.board_settings import BoardSettingsDialog
 from app.presentation.main_window import MainWindow
 from app.presentation.settings_dialog import SettingsDialog
@@ -100,6 +100,30 @@ def test_settings_dialog_exposes_general_and_hotkey_pages(tmp_path: Path) -> Non
     application.processEvents()
 
 
+def test_hotkey_preferences_label_panic_stop_and_disable_an_empty_clear_action(
+    tmp_path: Path,
+) -> None:
+    application = QApplication.instance() or QApplication([])
+    context = create_context(tmp_path)
+    dialog = SettingsDialog(context.service, HotkeyCoordinator(context.service, context.hotkeys))
+
+    heading = dialog.hotkey_page.findChild(QLabel, "panicShortcutHeading")
+    debounce = dialog.hotkey_page.findChild(QLabel, "hotkeyDebounceLabel")
+    clear = dialog.hotkey_page.findChild(QPushButton, "clearPanicButton")
+    reregister = dialog.hotkey_page.findChild(QPushButton, "reRegisterHotkeysButton")
+    assert heading is not None and heading.text() == "Panic Stop shortcut"
+    assert debounce is not None and debounce.text() == "Trigger debounce"
+    assert clear is not None and not clear.isEnabled()
+    assert reregister is not None and reregister.text() == "Re-register assigned hotkeys"
+
+    dialog._set_panic_binding(HotkeyBinding.parse("Ctrl+Shift+P"))
+    assert clear.isEnabled()
+    dialog.clear_panic()
+    assert not clear.isEnabled()
+    dialog.close()
+    application.processEvents()
+
+
 def test_sound_pad_displays_the_assigned_hotkey_once_and_hides_delete_normally(
     tmp_path: Path,
 ) -> None:
@@ -132,17 +156,40 @@ def test_sound_pad_uses_full_width_trigger_loop_button_and_clickable_hotkey(
     pad = SoundPad(sound, active=False, arrange_mode=False)
     trigger = pad.findChild(QToolButton, "padTrigger-10")
     loop = pad.findChild(QPushButton, "padLoop-10")
+    volume = pad.findChild(QLabel, "padVolumeValue-10")
     hotkey = pad.findChild(QPushButton, "padHotkey-10")
     hotkey_spy = QSignalSpy(pad.hotkey_requested)
 
     assert trigger is not None
     assert trigger.sizePolicy().horizontalPolicy().name == "Expanding"
     assert loop is not None and loop.isCheckable()
+    assert loop.text() == "Loop"
+    loop.click()
+    assert loop.text() == "Loop on"
+    assert volume is not None and volume.text() == "100%"
+    slider = pad.findChild(QSlider, "padVolume-10")
+    assert slider is not None
+    slider.setValue(42)
+    assert volume.text() == "42%"
     assert hotkey is not None and hotkey.isEnabled()
     assert not pad.findChildren(QCheckBox)
     hotkey.click()
     assert hotkey_spy.count() == 1
     assert hotkey_spy.at(0) == [10]
+    pad.close()
+    application.processEvents()
+
+
+def test_sound_pad_labels_an_enabled_loop_without_relying_on_color(tmp_path: Path) -> None:
+    application = QApplication.instance() or QApplication([])
+    sound_path = tmp_path / "loop.wav"
+    sound_path.write_bytes(b"RIFF")
+    sound = Sound(11, 1, "Loop", sound_path, loop_enabled=True)
+
+    pad = SoundPad(sound, active=False, arrange_mode=False)
+    loop = pad.findChild(QPushButton, "padLoop-11")
+
+    assert loop is not None and loop.text() == "Loop on"
     pad.close()
     application.processEvents()
 
@@ -177,6 +224,24 @@ def test_sound_pad_context_menu_keeps_sound_management_actions() -> None:
     application.processEvents()
 
 
+def test_sound_pad_exposes_a_visible_actions_menu() -> None:
+    application = QApplication.instance() or QApplication([])
+    sound = Sound(12, 1, "Stinger", Path("stinger.wav"), hotkey="Ctrl+2")
+
+    pad = SoundPad(sound, active=False, arrange_mode=False)
+    actions = pad.findChild(QToolButton, "padActions-12")
+
+    assert actions is not None
+    assert actions.minimumWidth() >= 40
+    assert actions.minimumHeight() >= 40
+    assert actions.accessibleName() == "Manage Stinger"
+    actions_text = [action.text() for action in actions.menu().actions()]
+    assert actions_text[:3] == ["Rename", "Change hotkey", "Clear hotkey"]
+    assert actions_text[3].startswith("Move to board")
+    pad.close()
+    application.processEvents()
+
+
 def test_cue_workspace_uses_four_column_pads_and_arrange_mode(tmp_path: Path) -> None:
     application = QApplication.instance() or QApplication([])
     context = create_context(tmp_path)
@@ -194,9 +259,11 @@ def test_cue_workspace_uses_four_column_pads_and_arrange_mode(tmp_path: Path) ->
     assert window._grid.columnCount() == 4
     assert window._grid.itemAtPosition(0, 3) is not None
     assert window._grid.itemAtPosition(1, 0) is not None
-    arrange = window.findChild(QPushButton, "arrangeButton")
-    assert arrange is not None
-    arrange.click()
+    manage = window.findChild(QPushButton, "manageButton")
+    assert manage is not None
+    assert manage.text() == "Manage sounds"
+    assert manage.toolTip() == "Show sound deletion controls"
+    manage.click()
     application.processEvents()
 
     pad = window._grid.itemAtPosition(0, 0).widget()
@@ -204,16 +271,21 @@ def test_cue_workspace_uses_four_column_pads_and_arrange_mode(tmp_path: Path) ->
     trigger = pad.findChild(QToolButton, f"padTrigger-{sounds[0].id}")
     assert delete is not None and not delete.isHidden()
     assert trigger is not None and not trigger.isEnabled()
+    assert manage.text() == "Done"
+    assert manage.toolTip() == "Hide sound deletion controls"
     window.close()
     application.processEvents()
 
 
-def test_signal_console_exposes_playback_rail_and_capability_link(tmp_path: Path) -> None:
+def test_signal_console_exposes_collapsed_activity_rail_and_capability_link(tmp_path: Path) -> None:
     application = QApplication.instance() or QApplication([])
     context = create_context(tmp_path)
     window = MainWindow(context.service, context.hotkeys)
 
-    assert window.findChild(QWidget, "playbackRail") is not None
+    activity_rail = window.findChild(QWidget, "activityRail")
+    activity_toggle = window.findChild(QPushButton, "activityToggleButton")
+    assert activity_rail is not None and activity_rail.isHidden()
+    assert activity_toggle is not None and activity_toggle.text() == "Activity (0)"
     capability_button = window.findChild(QPushButton, "capabilityButton")
     assert capability_button is not None
     assert not capability_button.icon().isNull()
@@ -231,13 +303,9 @@ def test_signal_console_exposes_playback_rail_and_capability_link(tmp_path: Path
     application.processEvents()
 
 
-def test_rail_layout_exposes_icon_boards_settings_and_hotkey_ledger(tmp_path: Path) -> None:
+def test_rail_layout_exposes_icon_boards_settings_and_capability_status(tmp_path: Path) -> None:
     application = QApplication.instance() or QApplication([])
     context = create_context(tmp_path)
-    board = context.service.list_boards()[0]
-    source = tmp_path / "intro.wav"
-    source.write_bytes(b"RIFF")
-    context.service.sounds.save_sound(Sound(0, board.id, "Intro", source, hotkey="Ctrl+1"))
     window = MainWindow(context.service, context.hotkeys)
     window.refresh_boards()
     window._refresh_capability()
@@ -249,9 +317,9 @@ def test_rail_layout_exposes_icon_boards_settings_and_hotkey_ledger(tmp_path: Pa
     assert board_settings.text() == "Edit board"
     assert board_settings.toolTip() == "Board settings"
     assert window.findChild(QPushButton, "settingsButton") is not None
-    assert window.findChild(QWidget, "hotkeyPanel") is not None
-    assert window.findChild(QLabel, "hotkeyStateLabel") is not None
-    assert window.findChild(QLabel, "hotkeyRow-1").text() == "Ctrl + 1  Intro"
+    assert window.findChild(QWidget, "hotkeyPanel") is None
+    capability = window.findChild(QLabel, "capabilityLabel")
+    assert capability is not None and "Global hotkeys" in capability.text()
 
     window.close()
     application.processEvents()
@@ -268,6 +336,8 @@ def test_active_playback_rail_renders_compact_lane_and_stops_it(tmp_path: Path) 
     window._active_lanes = [PlaybackSnapshot("lane-1", sound.id, 4_000, 12_000)]
     window._refresh_lanes()
 
+    activity_rail = window.findChild(QWidget, "activityRail")
+    assert activity_rail is not None and not activity_rail.isHidden()
     lane = window.findChild(QFrame, "playbackLane-lane-1")
     timer = window.findChild(QLabel, "playbackTime-lane-1")
     stop = window.findChild(QPushButton, "stopLane-lane-1")
@@ -283,7 +353,7 @@ def test_active_playback_rail_renders_compact_lane_and_stops_it(tmp_path: Path) 
     application.processEvents()
 
 
-def test_hotkey_ledger_preserves_permission_required_state(tmp_path: Path) -> None:
+def test_capability_bar_preserves_permission_required_state(tmp_path: Path) -> None:
     application = QApplication.instance() or QApplication([])
     context = create_context(tmp_path)
     window = MainWindow(context.service, context.hotkeys)
@@ -294,12 +364,44 @@ def test_hotkey_ledger_preserves_permission_required_state(tmp_path: Path) -> No
         "Grant Accessibility permission to use global hotkeys.",
     )
 
-    window._refresh_hotkey_panel(status, None)
+    window.coordinator.status = lambda: status
+    window._refresh_capability()
 
-    state = window.findChild(QLabel, "hotkeyStateLabel")
-    assert state is not None
-    assert state.text() == "macOS permission may be required"
-    assert state.property("state") == "unavailable"
+    capability = window.findChild(QLabel, "capabilityLabel")
+    assert capability is not None
+    assert "macOS permission may be required" in capability.text()
+    assert "Grant Accessibility permission" in capability.text()
+    window.close()
+    application.processEvents()
+
+
+def test_activity_rail_can_be_pinned_while_idle_and_auto_expands_for_playback(
+    tmp_path: Path,
+) -> None:
+    application = QApplication.instance() or QApplication([])
+    context = create_context(tmp_path)
+    board = context.service.list_boards()[0]
+    source = tmp_path / "activity.wav"
+    source.write_bytes(b"RIFF")
+    sound = context.service.sounds.save_sound(Sound(0, board.id, "Activity", source))
+    window = MainWindow(context.service, context.hotkeys)
+    activity_rail = window.findChild(QWidget, "activityRail")
+    activity_toggle = window.findChild(QPushButton, "activityToggleButton")
+
+    assert activity_rail is not None and activity_rail.isHidden()
+    assert activity_toggle is not None
+    activity_toggle.click()
+    assert not activity_rail.isHidden()
+    activity_toggle.click()
+    assert activity_rail.isHidden()
+
+    window._active_lanes = [PlaybackSnapshot("lane-1", sound.id, 1_000, 2_000)]
+    window._refresh_lanes()
+    assert not activity_rail.isHidden()
+
+    window._active_lanes = []
+    window._refresh_lanes()
+    assert activity_rail.isHidden()
     window.close()
     application.processEvents()
 
@@ -350,6 +452,34 @@ def test_operator_strip_split_import_emits_managed_and_reference_choices(tmp_pat
     application.processEvents()
 
 
+def test_operator_strip_shows_a_labelled_import_control_at_normal_width(tmp_path: Path) -> None:
+    application = QApplication.instance() or QApplication([])
+    context = create_context(tmp_path)
+    window = MainWindow(context.service, context.hotkeys)
+    import_button = window.operator_strip.findChild(QToolButton, "importButton")
+
+    assert import_button is not None
+    assert import_button.text() == "Import audio"
+    assert import_button.toolButtonStyle() is Qt.ToolButtonStyle.ToolButtonTextBesideIcon
+
+    window.close()
+    application.processEvents()
+
+
+def test_header_import_requests_managed_copy(tmp_path: Path) -> None:
+    application = QApplication.instance() or QApplication([])
+    context = create_context(tmp_path)
+    window = MainWindow(context.service, context.hotkeys)
+    requests: list[bool | None] = []
+    window.import_files = requests.append
+
+    window._request_managed_import()
+
+    assert requests == [True]
+    window.close()
+    application.processEvents()
+
+
 def test_operator_strip_routes_volume_and_all_playback_modes(tmp_path: Path) -> None:
     application = QApplication.instance() or QApplication([])
     context = create_context(tmp_path)
@@ -374,6 +504,7 @@ def test_operator_strip_routes_volume_and_all_playback_modes(tmp_path: Path) -> 
     for object_name, expected_mode in cases:
         button = operator_strip.findChild(QPushButton, object_name)
         assert button is not None
+        assert button.toolTip()
         button.click()
         assert context.service.playback_mode() is expected_mode
 

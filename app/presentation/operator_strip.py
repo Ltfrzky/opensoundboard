@@ -80,13 +80,21 @@ class OperatorStrip(QFrame):
         self.playback_button_group.setExclusive(True)
         self.playback_buttons: dict[PlaybackMode, QPushButton] = {}
         segment_specs = (
-            (PlaybackMode.OVERLAP, "Overlap", "layers", "playbackModeOverlapButton", 82),
+            (
+                PlaybackMode.OVERLAP,
+                "Overlap",
+                "layers",
+                "playbackModeOverlapButton",
+                82,
+                "Allow multiple sounds to play together",
+            ),
             (
                 PlaybackMode.STOP_PREVIOUS,
                 "Stop Previous",
                 "stop_circle",
                 "playbackModeStopPreviousButton",
                 104,
+                "Stop the previous sound before playing a new one",
             ),
             (
                 PlaybackMode.STOP_SAME_SOUND,
@@ -94,9 +102,10 @@ class OperatorStrip(QFrame):
                 "repeat_one",
                 "playbackModeStopSameButton",
                 92,
+                "Stop the same sound when it is triggered again",
             ),
         )
-        for index, (mode, text, icon_name, object_name, width) in enumerate(segment_specs):
+        for index, (mode, text, icon_name, object_name, width, tooltip) in enumerate(segment_specs):
             button = QPushButton(text)
             button.setObjectName(object_name)
             button.setIcon(material_icon(icon_name))
@@ -109,6 +118,7 @@ class OperatorStrip(QFrame):
             button.setMinimumWidth(width)
             button.setMinimumHeight(40)
             button.setAccessibleName(text)
+            button.setToolTip(tooltip)
             button.clicked.connect(
                 lambda _checked=False, selected=mode: self.playback_mode_changed.emit(selected)
             )
@@ -152,12 +162,13 @@ class OperatorStrip(QFrame):
     def _build_import_button(self) -> QToolButton:
         button = QToolButton()
         button.setObjectName("importButton")
-        button.setText("Import")
+        button.setText("Import audio")
         button.setIcon(material_icon("file_upload"))
         button.setAccessibleName("Import audio")
         button.setToolTip("Import audio into the managed library")
+        button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         button.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
-        button.setMinimumSize(108, 40)
+        button.setMinimumSize(128, 40)
         button.clicked.connect(lambda _checked=False: self.import_requested.emit(True))
 
         menu = QMenu(button)

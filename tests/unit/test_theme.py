@@ -7,6 +7,7 @@ def test_hotkey_toggle_uses_a_single_border_for_checked_and_focused_states() -> 
         not in SIGNAL_CONSOLE_STYLESHEET
     )
     assert 'QPushButton#hotkeyToggleButton:focus' in SIGNAL_CONSOLE_STYLESHEET
+    assert 'QListWidget:focus' in SIGNAL_CONSOLE_STYLESHEET
 
 
 def test_sound_pad_theme_defines_pad_keycap_arrange_and_inline_control_states() -> None:
@@ -15,10 +16,12 @@ def test_sound_pad_theme_defines_pad_keycap_arrange_and_inline_control_states() 
         'QFrame[cssRole="soundPad"][active="true"]',
         'QFrame[cssRole="soundPad"][missing="true"]',
         'QPushButton[cssRole="hotkeyKeycap"]',
-        'QPushButton#arrangeButton[arranging="true"]',
+        'QPushButton#manageButton[managing="true"]',
         'QPushButton[cssRole="padDelete"]',
+        'QToolButton[cssRole="padActions"]',
         'QToolButton[cssRole="padTrigger"]',
         'QSlider[cssRole="padVolume"]',
+        'QLabel[cssRole="padVolumeValue"]',
         'QPushButton[cssRole="padLoop"]',
     )
 

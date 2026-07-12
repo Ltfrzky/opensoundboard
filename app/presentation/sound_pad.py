@@ -53,6 +53,16 @@ class SoundPad(QFrame):
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(8)
 
+        self.actions_button = QToolButton()
+        self.actions_button.setObjectName(f"padActions-{sound.id}")
+        self.actions_button.setProperty("cssRole", "padActions")
+        self.actions_button.setIcon(material_icon("edit"))
+        self.actions_button.setMinimumSize(40, 40)
+        self.actions_button.setToolTip(f"Manage {sound.name}")
+        self.actions_button.setAccessibleName(f"Manage {sound.name}")
+        self.actions_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.actions_button.setMenu(self.context_menu())
+
         self.delete_button = QPushButton("Delete")
         self.delete_button.setObjectName(f"padDelete-{sound.id}")
         self.delete_button.setProperty("cssRole", "padDelete")
@@ -61,11 +71,12 @@ class SoundPad(QFrame):
         self.delete_button.setVisible(arrange_mode)
         self.delete_button.setToolTip(f"Delete {sound.name}")
         self.delete_button.clicked.connect(lambda: self.delete_requested.emit(sound.id))
-        delete_row = QHBoxLayout()
-        delete_row.setContentsMargins(0, 0, 0, 0)
-        delete_row.addStretch()
-        delete_row.addWidget(self.delete_button)
-        layout.addLayout(delete_row)
+        action_row = QHBoxLayout()
+        action_row.setContentsMargins(0, 0, 0, 0)
+        action_row.addStretch()
+        action_row.addWidget(self.actions_button)
+        action_row.addWidget(self.delete_button)
+        layout.addLayout(action_row)
 
         self.trigger = QToolButton()
         self.trigger.setObjectName(f"padTrigger-{sound.id}")
@@ -116,20 +127,30 @@ class SoundPad(QFrame):
             self.volume_slider.setRange(0, 100)
             self.volume_slider.setValue(sound.volume)
             self.volume_slider.setAccessibleName(f"Volume for {sound.name}")
+            self.volume_value = QLabel(f"{sound.volume}%")
+            self.volume_value.setObjectName(f"padVolumeValue-{sound.id}")
+            self.volume_value.setProperty("cssRole", "padVolumeValue")
+            self.volume_value.setAlignment(
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+            )
+            self.volume_value.setFixedWidth(34)
+            self.volume_slider.valueChanged.connect(
+                lambda value: self.volume_value.setText(f"{value}%")
+            )
             self.volume_slider.sliderReleased.connect(
                 lambda: self.volume_changed.emit(sound.id, self.volume_slider.value())
             )
             mix.addWidget(self.volume_slider, 1)
+            mix.addWidget(self.volume_value)
             self.loop_button = QPushButton("Loop")
             self.loop_button.setObjectName(f"padLoop-{sound.id}")
             self.loop_button.setProperty("cssRole", "padLoop")
             self.loop_button.setCheckable(True)
             self.loop_button.setChecked(sound.loop_enabled)
-            self.loop_button.setMinimumSize(58, 40)
+            self.loop_button.setText("Loop on" if sound.loop_enabled else "Loop")
+            self.loop_button.setMinimumSize(68, 40)
             self.loop_button.setAccessibleName(f"Loop {sound.name}")
-            self.loop_button.toggled.connect(
-                lambda enabled: self.loop_changed.emit(sound.id, enabled)
-            )
+            self.loop_button.toggled.connect(lambda enabled: self._set_loop_enabled(enabled))
             mix.addWidget(self.loop_button)
             layout.addLayout(mix)
 
@@ -157,6 +178,10 @@ class SoundPad(QFrame):
         move = menu.addAction("Move to board…")
         move.triggered.connect(lambda: self.move_requested.emit(self.sound.id))
         return menu
+
+    def _set_loop_enabled(self, enabled: bool) -> None:
+        self.loop_button.setText("Loop on" if enabled else "Loop")
+        self.loop_changed.emit(self.sound.id, enabled)
 
     def _show_context_menu(self, position: QPoint) -> None:
         self.context_menu().exec(self.mapToGlobal(position))
