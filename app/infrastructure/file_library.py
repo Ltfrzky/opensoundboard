@@ -36,6 +36,11 @@ class FileLibrary:
     def is_managed(self, path: Path) -> bool:
         return Path(path).resolve().parent == self.library_path.resolve()
 
+    def remove_managed(self, path: Path) -> None:
+        candidate = Path(path)
+        if self.is_managed(candidate) and candidate.exists():
+            candidate.unlink()
+
     @staticmethod
     def normalized(path: Path) -> str:
         return os.path.normcase(str(Path(path).resolve()))

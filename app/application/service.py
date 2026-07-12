@@ -103,11 +103,14 @@ class SoundboardService:
 
     def delete_sound(self, sound_id: int) -> None:
         self.stop(sound_id)
+        sound = self.get_sound(sound_id)
         self.sounds.delete_sound(sound_id)
+        self.library.remove_managed(sound.file_path)
 
     def import_files(self, board_id: int, paths: list[Path], copy_files: bool) -> ImportResult:
         result = ImportResult()
         for raw_path in paths:
+            stored_path: Path | None = None
             try:
                 source = self.library.validate(raw_path)
                 normalized = self.library.normalized(source)
@@ -122,6 +125,8 @@ class SoundboardService:
                     )
                 )
             except Exception as error:
+                if copy_files and stored_path is not None:
+                    self.library.remove_managed(stored_path)
                 result.failures.append(str(error))
         return result
 
