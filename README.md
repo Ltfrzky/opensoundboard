@@ -19,3 +19,10 @@ playback, and configurable global hotkeys. Install only `.[dev]` to run GUI play
 without global hooks; install `.[dev,hotkeys]` to enable the optional `pynput` backend.
 Backups, packaging, output-device selection, and advanced organization tools remain
 deferred.
+
+## Windows beta packaging
+
+The current beta artifact is an unsigned portable Windows x64 ZIP with optional global-hotkey
+support included. Build and validate it using [the packaging guide](docs/PACKAGING.md) and the
+[Windows beta QA gate](docs/WINDOWS_BETA_QA.md). Windows may show a trust warning for this unsigned
+build.
