@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QFrame,
     QLabel,
+    QMessageBox,
     QPushButton,
     QSlider,
     QToolButton,
@@ -479,6 +480,28 @@ def test_header_import_requests_managed_copy(tmp_path: Path) -> None:
 
     assert requests == [True]
     window.close()
+    application.processEvents()
+
+
+def test_board_settings_rejects_whitespace_name_without_closing(
+    tmp_path: Path, monkeypatch
+) -> None:
+    application = QApplication.instance() or QApplication([])
+    context = create_context(tmp_path)
+    board = context.service.list_boards()[0]
+    dialog = BoardSettingsDialog(context.service, board)
+    warnings: list[str] = []
+    monkeypatch.setattr(
+        QMessageBox, "warning", lambda _parent, _title, message: warnings.append(message)
+    )
+    dialog.name_input.setText("   ")
+
+    dialog.save()
+
+    assert warnings == ["Board name cannot be blank"]
+    assert dialog.result() == 0
+    assert context.service.list_boards()[0].name == board.name
+    dialog.close()
     application.processEvents()
 
 

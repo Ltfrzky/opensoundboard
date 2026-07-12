@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from PySide6.QtWidgets import QComboBox, QDialog, QDialogButtonBox, QFormLayout, QLineEdit
+from PySide6.QtWidgets import (
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
+    QFormLayout,
+    QLineEdit,
+    QMessageBox,
+)
 
 from app.application.service import SoundboardService
 from app.domain.models import Board
@@ -35,9 +42,13 @@ class BoardSettingsDialog(QDialog):
         layout.addRow(buttons)
 
     def save(self) -> None:
+        name = self.name_input.text().strip()
+        if not name:
+            QMessageBox.warning(self, "Invalid board name", "Board name cannot be blank")
+            return
         self.service.update_board(
             self.board.id,
-            name=self.name_input.text(),
+            name=name,
             icon=self.icon_selector.currentText(),
         )
         self.accept()
