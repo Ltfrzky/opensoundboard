@@ -227,6 +227,28 @@ def test_sound_pad_context_menu_keeps_sound_management_actions() -> None:
     application.processEvents()
 
 
+def test_transient_sound_pad_context_menu_is_deleted_after_display(monkeypatch) -> None:
+    application = QApplication.instance() or QApplication([])
+    sound = Sound(9, 1, "Stinger", Path("stinger.wav"), hotkey="Ctrl+2")
+    pad = SoundPad(sound, active=False, arrange_mode=False)
+    deleted: list[bool] = []
+
+    class TransientMenu:
+        def exec(self, _position) -> None:
+            return None
+
+        def deleteLater(self) -> None:
+            deleted.append(True)
+
+    monkeypatch.setattr(pad, "context_menu", lambda: TransientMenu())
+
+    pad._show_context_menu(QPoint())
+
+    assert deleted == [True]
+    pad.close()
+    application.processEvents()
+
+
 def test_sound_pad_exposes_a_visible_actions_menu() -> None:
     application = QApplication.instance() or QApplication([])
     sound = Sound(12, 1, "Stinger", Path("stinger.wav"), hotkey="Ctrl+2")

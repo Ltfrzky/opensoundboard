@@ -184,4 +184,8 @@ class SoundPad(QFrame):
         self.loop_changed.emit(self.sound.id, enabled)
 
     def _show_context_menu(self, position: QPoint) -> None:
-        self.context_menu().exec(self.mapToGlobal(position))
+        menu = self.context_menu()
+        try:
+            menu.exec(self.mapToGlobal(position))
+        finally:
+            menu.deleteLater()
