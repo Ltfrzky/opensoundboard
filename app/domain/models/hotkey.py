@@ -91,6 +91,16 @@ class HotkeyBinding:
             raise InvalidHotkeyError(f"Reserved operating-system shortcut: {binding.canonical}")
         return binding
 
+    @classmethod
+    def parse_persisted(cls, value: str | None) -> HotkeyBinding | None:
+        """Return a valid persisted binding, leaving malformed stored data unassigned."""
+        if not value:
+            return None
+        try:
+            return cls.parse(value)
+        except InvalidHotkeyError:
+            return None
+
     @property
     def canonical(self) -> str:
         order = (

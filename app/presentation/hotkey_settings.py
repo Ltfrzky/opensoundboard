@@ -90,4 +90,4 @@ class HotkeySettingsDialog(QDialog):
 
     def _current_panic(self) -> HotkeyBinding | None:
         value = self.coordinator.service.settings.get_setting("panic_stop_hotkey", "")
-        return HotkeyBinding.parse(value) if value else None
+        return HotkeyBinding.parse_persisted(value)

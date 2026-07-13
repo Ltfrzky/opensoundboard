@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 from app.domain.errors import BoardNotEmptyError
-from app.domain.models import Board, Sound
+from app.domain.models import Board, HotkeyBinding, Sound
 
 
 class SQLiteStore:
@@ -18,10 +20,23 @@ class SQLiteStore:
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.database_path)
         connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
         return connection
 
+    @contextmanager
+    def _transaction(self) -> Iterator[sqlite3.Connection]:
+        connection = self._connect()
+        try:
+            yield connection
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
     def _create_schema(self) -> None:
-        with self._connect() as connection:
+        with self._transaction() as connection:
             connection.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS boards (
@@ -56,7 +71,7 @@ class SQLiteStore:
                 )
 
     def list_boards(self) -> list[Board]:
-        with self._connect() as connection:
+        with self._transaction() as connection:
             rows = connection.execute("SELECT * FROM boards ORDER BY sort_order, id").fetchall()
         return [
             Board(row["id"], row["name"], row["color"], row["icon"], row["sort_order"])
@@ -65,7 +80,7 @@ class SQLiteStore:
 
     def create_board(self, name: str) -> Board:
         board = Board(0, name, icon="equalizer")
-        with self._connect() as connection:
+        with self._transaction() as connection:
             order = connection.execute(
                 "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM boards"
             ).fetchone()[0]
@@ -77,13 +92,13 @@ class SQLiteStore:
 
     def rename_board(self, board_id: int, name: str) -> Board:
         board = Board(board_id, name)
-        with self._connect() as connection:
+        with self._transaction() as connection:
             connection.execute("UPDATE boards SET name = ? WHERE id = ?", (board.name, board_id))
         return board
 
     def update_board(self, board_id: int, *, name: str, icon: str) -> Board:
         board = Board(board_id, name, icon=icon)
-        with self._connect() as connection:
+        with self._transaction() as connection:
             connection.execute(
                 "UPDATE boards SET name = ?, icon = ? WHERE id = ?",
                 (board.name, board.icon, board_id),
@@ -91,7 +106,7 @@ class SQLiteStore:
         return board
 
     def delete_board(self, board_id: int) -> None:
-        with self._connect() as connection:
+        with self._transaction() as connection:
             count = connection.execute(
                 "SELECT COUNT(*) FROM sounds WHERE board_id = ?", (board_id,)
             ).fetchone()[0]
@@ -100,21 +115,21 @@ class SQLiteStore:
             connection.execute("DELETE FROM boards WHERE id = ?", (board_id,))
 
     def list_sounds(self, board_id: int) -> list[Sound]:
-        with self._connect() as connection:
+        with self._transaction() as connection:
             rows = connection.execute(
                 "SELECT * FROM sounds WHERE board_id = ? ORDER BY sort_order, id", (board_id,)
             ).fetchall()
         return [self._to_sound(row) for row in rows]
 
     def get_sound(self, sound_id: int) -> Sound:
-        with self._connect() as connection:
+        with self._transaction() as connection:
             row = connection.execute("SELECT * FROM sounds WHERE id = ?", (sound_id,)).fetchone()
         if row is None:
             raise KeyError(f"Sound {sound_id} does not exist")
         return self._to_sound(row)
 
     def save_sound(self, sound: Sound) -> Sound:
-        with self._connect() as connection:
+        with self._transaction() as connection:
             if sound.id:
                 try:
                     connection.execute(
@@ -133,7 +148,7 @@ class SQLiteStore:
                         ),
                     )
                 except sqlite3.IntegrityError as error:
-                    raise ValueError("Sound hotkey must be unique") from error
+                    raise self._sound_save_error(error) from error
                 return sound
             order = connection.execute(
                 "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM sounds WHERE board_id = ?",
@@ -157,7 +172,7 @@ class SQLiteStore:
                     ),
                 )
             except sqlite3.IntegrityError as error:
-                raise ValueError("Sound hotkey must be unique") from error
+                raise self._sound_save_error(error) from error
         return Sound(
             cursor.lastrowid,
             sound.board_id,
@@ -172,11 +187,11 @@ class SQLiteStore:
         )
 
     def delete_sound(self, sound_id: int) -> None:
-        with self._connect() as connection:
+        with self._transaction() as connection:
             connection.execute("DELETE FROM sounds WHERE id = ?", (sound_id,))
 
     def has_source_path(self, source_path: str, *, exclude_id: int | None = None) -> bool:
-        with self._connect() as connection:
+        with self._transaction() as connection:
             query = "SELECT 1 FROM sounds WHERE source_path = ?"
             values: tuple[object, ...] = (source_path,)
             if exclude_id is not None:
@@ -188,17 +203,23 @@ class SQLiteStore:
             )
 
     def get_setting(self, key: str, default: str) -> str:
-        with self._connect() as connection:
+        with self._transaction() as connection:
             row = connection.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
         return default if row is None else str(row["value"])
 
     def set_setting(self, key: str, value: str) -> None:
-        with self._connect() as connection:
+        with self._transaction() as connection:
             connection.execute(
                 "INSERT INTO settings(key, value) VALUES (?, ?) "
                 "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                 (key, value),
             )
+
+    @staticmethod
+    def _sound_save_error(error: sqlite3.IntegrityError) -> ValueError:
+        if error.sqlite_errorcode == sqlite3.SQLITE_CONSTRAINT_FOREIGNKEY:
+            return ValueError("Sound board does not exist")
+        return ValueError("Sound hotkey must be unique")
 
     @staticmethod
     def _source_value(sound: Sound) -> str | None:
@@ -207,6 +228,7 @@ class SQLiteStore:
     @staticmethod
     def _to_sound(row: sqlite3.Row) -> Sound:
         source = row["source_path"]
+        binding = HotkeyBinding.parse_persisted(row["hotkey"])
         return Sound(
             row["id"],
             row["board_id"],
@@ -216,6 +238,6 @@ class SQLiteStore:
             row["volume"],
             bool(row["loop_enabled"]),
             row["sort_order"],
-            row["hotkey"],
+            binding.canonical if binding else None,
             row["duration_ms"],
         )

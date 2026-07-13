@@ -72,6 +72,24 @@ def test_import_copy_creates_managed_sound(service: SoundboardService, tmp_path:
     assert result.imported[0].file_path.parent.name == "library"
 
 
+def test_failed_managed_import_removes_the_new_copy(
+    service: SoundboardService, tmp_path: Path, monkeypatch
+) -> None:
+    source = tmp_path / "airhorn.wav"
+    source.write_bytes(b"RIFF")
+
+    def fail_save(_sound):
+        raise RuntimeError("db failed")
+
+    monkeypatch.setattr(service.sounds, "save_sound", fail_save)
+
+    result = service.import_files(service.list_boards()[0].id, [source], copy_files=True)
+
+    assert result.imported == []
+    assert result.failures == ["db failed"]
+    assert list(service.library.library_path.iterdir()) == []
+
+
 def test_duplicate_source_is_skipped(service: SoundboardService, tmp_path: Path) -> None:
     source = tmp_path / "ding.wav"
     source.write_bytes(b"RIFF")
@@ -171,3 +189,39 @@ def test_delete_sound_removes_it_from_the_board(service: SoundboardService, tmp_
     service.delete_sound(sound.id)
 
     assert service.list_sounds(board_id) == []
+
+
+def test_delete_sound_removes_managed_media_but_preserves_source_references(
+    service: SoundboardService, tmp_path: Path
+) -> None:
+    managed_source = tmp_path / "managed.wav"
+    managed_source.write_bytes(b"RIFF")
+    referenced_source = tmp_path / "referenced.wav"
+    referenced_source.write_bytes(b"RIFF")
+    board_id = service.list_boards()[0].id
+    managed = service.import_files(board_id, [managed_source], copy_files=True).imported[0]
+    referenced = service.import_files(board_id, [referenced_source], copy_files=False).imported[0]
+
+    service.delete_sound(managed.id)
+    service.delete_sound(referenced.id)
+
+    assert not managed.file_path.exists()
+    assert referenced_source.exists()
+
+
+def test_failed_sound_deletion_preserves_managed_media(
+    service: SoundboardService, tmp_path: Path, monkeypatch
+) -> None:
+    source = tmp_path / "managed.wav"
+    source.write_bytes(b"RIFF")
+    sound = service.import_files(service.list_boards()[0].id, [source], copy_files=True).imported[0]
+
+    def fail_delete(_sound_id: int) -> None:
+        raise RuntimeError("db failed")
+
+    monkeypatch.setattr(service.sounds, "delete_sound", fail_delete)
+
+    with pytest.raises(RuntimeError, match="db failed"):
+        service.delete_sound(sound.id)
+
+    assert sound.file_path.exists()

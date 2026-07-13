@@ -50,6 +50,11 @@ class QtAudioEngine:
                 identifier, source, status
             )
         )
+        player.errorOccurred.connect(
+            lambda _error, _message, identifier=lane_id, source=player: self._remove_errored(
+                identifier, source
+            )
+        )
         player.play()
 
     def active_lanes(self) -> list[PlaybackSnapshot]:
@@ -93,9 +98,13 @@ class QtAudioEngine:
         self, lane_id: str, player: QMediaPlayer, status: QMediaPlayer.MediaStatus
     ) -> None:
         playback = self._players.get(lane_id)
-        if (
-            status is QMediaPlayer.MediaStatus.EndOfMedia
-            and playback is not None
-            and playback.player is player
-        ):
+        if status in {
+            QMediaPlayer.MediaStatus.EndOfMedia,
+            QMediaPlayer.MediaStatus.InvalidMedia,
+        } and playback is not None and playback.player is player:
+            self._players.pop(lane_id, None)
+
+    def _remove_errored(self, lane_id: str, player: QMediaPlayer) -> None:
+        playback = self._players.get(lane_id)
+        if playback is not None and playback.player is player:
             self._players.pop(lane_id, None)

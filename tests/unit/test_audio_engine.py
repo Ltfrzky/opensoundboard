@@ -35,6 +35,20 @@ def test_finished_playback_removes_only_its_own_lane() -> None:
     assert list(engine._players) == ["second"]
 
 
+def test_invalid_media_removes_only_the_failed_lane() -> None:
+    engine = QtAudioEngine()
+    failed = object()
+    healthy = object()
+    engine._players = {
+        "failed": ActivePlayback(1, failed, SimpleNamespace(), 50),
+        "healthy": ActivePlayback(2, healthy, SimpleNamespace(), 50),
+    }
+
+    engine._remove_finished("failed", failed, QMediaPlayer.MediaStatus.InvalidMedia)
+
+    assert list(engine._players) == ["healthy"]
+
+
 def test_master_volume_preserves_active_per_sound_volume() -> None:
     engine = QtAudioEngine()
     output = FakeOutput()

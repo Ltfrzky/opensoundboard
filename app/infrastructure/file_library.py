@@ -17,6 +17,8 @@ class FileLibrary:
 
     def validate(self, path: Path) -> Path:
         candidate = Path(path)
+        if candidate.is_symlink():
+            raise InvalidSoundError(f"{candidate.name}: symbolic links are not supported")
         if candidate.suffix.lower() not in SUPPORTED_AUDIO_EXTENSIONS:
             raise InvalidSoundError(f"{candidate.name}: unsupported audio format")
         if not candidate.is_file():
@@ -33,6 +35,11 @@ class FileLibrary:
 
     def is_managed(self, path: Path) -> bool:
         return Path(path).resolve().parent == self.library_path.resolve()
+
+    def remove_managed(self, path: Path) -> None:
+        candidate = Path(path)
+        if self.is_managed(candidate) and candidate.exists():
+            candidate.unlink()
 
     @staticmethod
     def normalized(path: Path) -> str:

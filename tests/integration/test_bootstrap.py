@@ -1,13 +1,15 @@
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import QPoint, QRect, Qt
+from PySide6.QtCore import QMimeData, QPoint, QPointF, QRect, Qt, QUrl
+from PySide6.QtGui import QDropEvent
 from PySide6.QtTest import QSignalSpy
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QFrame,
     QLabel,
+    QMessageBox,
     QPushButton,
     QSlider,
     QToolButton,
@@ -15,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from app.application.hotkeys import HotkeyCoordinator
+from app.application.service import ImportResult
 from app.bootstrap import create_context
 from app.domain.enums.hotkey_status import HotkeyStatusState
 from app.domain.enums.playback import PlaybackMode
@@ -220,6 +223,28 @@ def test_sound_pad_context_menu_keeps_sound_management_actions() -> None:
         "Clear hotkey",
         "Move to board…",
     ]
+    pad.close()
+    application.processEvents()
+
+
+def test_transient_sound_pad_context_menu_is_deleted_after_display(monkeypatch) -> None:
+    application = QApplication.instance() or QApplication([])
+    sound = Sound(9, 1, "Stinger", Path("stinger.wav"), hotkey="Ctrl+2")
+    pad = SoundPad(sound, active=False, arrange_mode=False)
+    deleted: list[bool] = []
+
+    class TransientMenu:
+        def exec(self, _position) -> None:
+            return None
+
+        def deleteLater(self) -> None:
+            deleted.append(True)
+
+    monkeypatch.setattr(pad, "context_menu", lambda: TransientMenu())
+
+    pad._show_context_menu(QPoint())
+
+    assert deleted == [True]
     pad.close()
     application.processEvents()
 
@@ -476,6 +501,87 @@ def test_header_import_requests_managed_copy(tmp_path: Path) -> None:
     window._request_managed_import()
 
     assert requests == [True]
+    window.close()
+    application.processEvents()
+
+
+def test_board_settings_rejects_whitespace_name_without_closing(
+    tmp_path: Path, monkeypatch
+) -> None:
+    application = QApplication.instance() or QApplication([])
+    context = create_context(tmp_path)
+    board = context.service.list_boards()[0]
+    dialog = BoardSettingsDialog(context.service, board)
+    warnings: list[str] = []
+    monkeypatch.setattr(
+        QMessageBox, "warning", lambda _parent, _title, message: warnings.append(message)
+    )
+    dialog.name_input.setText("   ")
+
+    dialog.save()
+
+    assert warnings == ["Board name cannot be blank"]
+    assert dialog.result() == 0
+    assert context.service.list_boards()[0].name == board.name
+    dialog.close()
+    application.processEvents()
+
+
+def test_settings_dialog_opens_when_persisted_panic_hotkey_is_invalid(tmp_path: Path) -> None:
+    application = QApplication.instance() or QApplication([])
+    context = create_context(tmp_path)
+    context.service.settings.set_setting("panic_stop_hotkey", "not a shortcut")
+
+    dialog = SettingsDialog(context.service, HotkeyCoordinator(context.service, context.hotkeys))
+
+    assert dialog.panic_label.text() == "Not assigned"
+    dialog.close()
+    application.processEvents()
+
+
+def test_drop_event_imports_local_files_but_rejects_remote_file_urls(tmp_path: Path) -> None:
+    application = QApplication.instance() or QApplication([])
+    context = create_context(tmp_path)
+    window = MainWindow(context.service, context.hotkeys)
+    imported: list[tuple[int, list[Path], bool]] = []
+    window.service.import_files = lambda board_id, paths, copy_files: (
+        imported.append((board_id, paths, copy_files)) or ImportResult()
+    )
+    window._show_import_summary = lambda result: None
+
+    local_file = tmp_path / "local.wav"
+    local_mime_data = QMimeData()
+    local_mime_data.setUrls([QUrl.fromLocalFile(str(local_file))])
+    window.dropEvent(
+        QDropEvent(
+            QPointF(),
+            Qt.DropAction.CopyAction,
+            local_mime_data,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+    )
+
+    assert imported == [(context.service.list_boards()[0].id, [local_file], True)]
+
+    for remote_url in (
+        "file://host/share/clip.mp3",
+        "file:////host/share/clip.wav",
+        "file:///%5C%5Chost%5Cshare%5Cclip.wav",
+    ):
+        remote_mime_data = QMimeData()
+        remote_mime_data.setUrls([QUrl(remote_url)])
+        window.dropEvent(
+            QDropEvent(
+                QPointF(),
+                Qt.DropAction.CopyAction,
+                remote_mime_data,
+                Qt.MouseButton.LeftButton,
+                Qt.KeyboardModifier.NoModifier,
+            )
+        )
+
+    assert imported == [(context.service.list_boards()[0].id, [local_file], True)]
     window.close()
     application.processEvents()
 

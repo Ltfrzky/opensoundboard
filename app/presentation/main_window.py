@@ -610,7 +610,8 @@ class MainWindow(QMainWindow):
         enabled = self.coordinator.is_enabled()
         self.operator_strip.set_hotkey_state(enabled)
         panic_value = self.service.settings.get_setting("panic_stop_hotkey", "")
-        panic_label = HotkeyBinding.parse(panic_value).display_label if panic_value else None
+        panic_binding = HotkeyBinding.parse_persisted(panic_value)
+        panic_label = panic_binding.display_label if panic_binding else None
         self.operator_strip.set_panic_shortcut(panic_label)
 
     def toggle_hotkeys(self) -> None:
@@ -649,12 +650,25 @@ class MainWindow(QMainWindow):
             event.acceptProposedAction()
 
     def dropEvent(self, event) -> None:  # type: ignore[override]
-        paths = [Path(url.toLocalFile()) for url in event.mimeData().urls() if url.isLocalFile()]
+        paths = [
+            path
+            for url in event.mimeData().urls()
+            if (path := self._local_drop_path(url)) is not None
+        ]
         board = self._current_board()
         if paths and board is not None:
             result = self.service.import_files(board.id, paths, copy_files=True)
             self._show_import_summary(result)
             self.refresh_sounds(self.board_list.currentRow())
+
+    @staticmethod
+    def _local_drop_path(url) -> Path | None:
+        if not url.isLocalFile():
+            return None
+        local_path = url.toLocalFile()
+        if local_path.replace("/", "\\").startswith("\\\\"):
+            return None
+        return Path(local_path)
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
         self._playback_timer.stop()
